@@ -201,9 +201,15 @@ Do **not** add `DATABASE_URL` — database is not used.
 
 ```
 Root Directory:     backend
-Build Command:      pip install -r requirements.txt
-Start Command:      uvicorn app.main:app --host 0.0.0.0 --port $PORT
+Runtime:            Docker
+Dockerfile Path:    ./Dockerfile
 Health Check Path:  /api/health
+```
+
+If using **Python** runtime (manual setup), set Start Command to:
+
+```
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ```
 
 ## Vercel
@@ -214,6 +220,29 @@ Framework:          Vite
 Build Command:      npm run build
 Output Directory:   dist
 ```
+
+---
+
+# Fix: `gunicorn: command not found` / `your_application.wsgi`
+
+Render is using the **wrong start command** (Django default). Fix it now:
+
+1. Render Dashboard → **upsc-backend** → **Settings**
+2. Find **Start Command**
+3. Replace whatever is there with **exactly**:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+4. Confirm **Root Directory** is `backend`
+5. **Save Changes** → wait until **Live**
+
+**Or** use Docker (recommended, from repo `render.yaml`):
+
+1. **Settings** → change **Runtime** to **Docker** (if available) or recreate via **Blueprint**
+2. **Dockerfile Path:** `backend/Dockerfile` (or `./Dockerfile` with Root Directory `backend`)
+3. Leave Start Command **empty** (Dockerfile `CMD` runs uvicorn)
 
 ---
 
@@ -236,6 +265,7 @@ If logs show `Using Python version 3.14.3` and `pydantic-core` metadata failed:
 | Frontend calls `localhost` | Set `VITE_API_BASE_URL` on Vercel → **Redeploy** |
 | Render build fails | Check **Logs**; confirm `backend/requirements.txt` exists |
 | `pydantic-core` / maturin build error | Render used Python 3.14 — set `PYTHON_VERSION` to `3.12.8` (see below) |
+| `gunicorn: command not found` | Set Start Command to `uvicorn app.main:app --host 0.0.0.0 --port $PORT` (see fix section above) |
 | `502` / timeout | Evaluation is long-running; check Render **Logs**; upgrade to Standard if needed |
 | Health check fails | Set `API_KEY` on Render |
 | Blank page on Vercel | Confirm Root Directory is `frontend` and Output is `dist` |

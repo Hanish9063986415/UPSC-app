@@ -1,11 +1,10 @@
 services:
   - type: web
     name: upsc-backend
-    runtime: python
+    runtime: docker
     rootDir: backend
     plan: starter
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
     envVars:
       - key: ENVIRONMENT
