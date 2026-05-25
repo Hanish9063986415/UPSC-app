@@ -61,10 +61,13 @@ class ConnectionPoolConfig:
     
     @staticmethod
     def get_httpx_limits():
-        """Get optimized HTTPX connection limits for high concurrency."""
+        """Connection pool sized for current deployment memory limits."""
         import httpx
+
+        settings = get_settings()
+        max_conn = max(10, settings.max_concurrent_requests * 2)
         return httpx.Limits(
-            max_keepalive_connections=100,  # Keep 100 connections alive
-            max_connections=200,  # Total connection pool
-            keepalive_expiry=30.0  # Keep connections alive for 30s
+            max_keepalive_connections=max_conn,
+            max_connections=max_conn * 2,
+            keepalive_expiry=30.0,
         )

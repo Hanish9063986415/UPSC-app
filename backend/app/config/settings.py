@@ -6,7 +6,7 @@ Handles environment variables and application settings.
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,14 +47,21 @@ class Settings(BaseSettings):
     log_file: str = "execution.log"
 
     # Processing Configuration
-    image_max_pixels: Optional[int] = None
+    image_max_pixels: Optional[int] = 178_956_970
     pdf_zoom_factor: int = 2
+    page_image_format: str = "JPEG"  # Smaller/faster than PNG for Gemini vision
+    page_image_jpeg_quality: int = 85
+    pdf_processing_batch_size: int = 8  # Pages rendered + sent to Gemini per batch
+    pdf_render_workers: int = 8  # Parallel CPU threads for page rendering
 
-    # Concurrency Configuration
-    max_workers: int = 50
-    extraction_batch_size: int = 10
-    max_concurrent_evals: int = 10
-    max_concurrent_requests: int = 100
+    # Concurrency Configuration (tuned for ~80 pages in under 3 minutes on 2 GB RAM)
+    max_workers: int = 8  # Gemini API thread pool
+    extraction_batch_size: int = 8  # Parallel Gemini vision calls per batch
+    max_concurrent_evals: int = 4  # Parallel question evaluations
+    max_concurrent_model_answers: int = 4  # Parallel model-answer generation
+    max_concurrent_requests: int = 8
+    max_concurrent_pdf_jobs: int = 1
+    target_eval_duration_seconds: int = 180  # Log warning if a job exceeds this
 
     # JSON Processing & Error Handling
     json_parse_retry_attempts: int = 3
@@ -97,6 +104,33 @@ class Settings(BaseSettings):
 
     api_keys: Optional[str] = Field(default=None, validation_alias="API_KEYS")
     request_timeout: int = 300
+
+    @model_validator(mode="after")
+    def apply_production_performance_profile(self) -> "Settings":
+        """
+        Production on Render Standard (2 GB): parallel batches for speed,
+        hard ceilings so RAM stays safe with 80-page sheets.
+        """
+        if self.environment != "production":
+            return self
+
+        ceilings = {
+            "max_concurrent_requests": 8,
+            "max_concurrent_evals": 5,
+            "max_concurrent_model_answers": 5,
+            "max_concurrent_pdf_jobs": 1,
+            "extraction_batch_size": 10,
+            "pdf_processing_batch_size": 10,
+            "pdf_render_workers": 10,
+            "max_workers": 10,
+            "pdf_zoom_factor": 2,
+        }
+        for field, ceiling in ceilings.items():
+            current = getattr(self, field)
+            if current > ceiling:
+                object.__setattr__(self, field, ceiling)
+
+        return self
 
     @property
     def cors_origins(self) -> list[str]:

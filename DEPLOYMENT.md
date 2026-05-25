@@ -44,7 +44,7 @@ All other variables are set automatically by `render.yaml`.
 
 ## 1.3 Choose plan and deploy
 
-1. For **Instance Type**, select **Starter** ($7/month — always on)
+1. For **Instance Type**, select **Standard** ($25/month — **2 GB RAM**, recommended for PDF + AI workloads). Starter (512 MB) is not sufficient for full answer-sheet evaluations.
 2. Click **Apply** / **Create**
 3. Wait until status is **Live** (Build → Deploy can take 3–8 minutes)
 
@@ -180,9 +180,17 @@ ALLOWED_ORIGINS=https://upsc-app.vercel.app,https://www.yourdomain.com
 | `FRONTEND_URL` | Yes | `https://upsc-app.vercel.app` |
 | `ALLOWED_ORIGINS` | Yes | `https://upsc-app.vercel.app` |
 | `PYTHON_VERSION` | Auto | `3.12.8` |
-| `max_workers` | Auto | `4` |
-| `max_concurrent_evals` | Auto | `2` |
-| `max_concurrent_requests` | Auto | `20` |
+| `max_workers` | Auto | `8` |
+| `pdf_render_workers` | Auto | `8` |
+| `max_concurrent_evals` | Auto | `4` |
+| `max_concurrent_model_answers` | Auto | `4` |
+| `max_concurrent_requests` | Auto | `8` |
+| `max_concurrent_pdf_jobs` | Auto | `1` |
+| `extraction_batch_size` | Auto | `8` |
+| `pdf_processing_batch_size` | Auto | `8` |
+| `page_image_format` | Auto | `JPEG` |
+| `target_eval_duration_seconds` | Auto | `180` |
+| `pdf_zoom_factor` | Auto | `2` |
 | `request_timeout` | Auto | `300` |
 
 Do **not** add `DATABASE_URL` — database is not used.
@@ -266,7 +274,10 @@ If logs show `Using Python version 3.14.3` and `pydantic-core` metadata failed:
 | Render build fails | Check **Logs**; confirm `backend/requirements.txt` exists |
 | `pydantic-core` / maturin build error | Render used Python 3.14 — set `PYTHON_VERSION` to `3.12.8` (see below) |
 | `gunicorn: command not found` | Set Start Command to `uvicorn app.main:app --host 0.0.0.0 --port $PORT` (see fix section above) |
-| `502` / timeout | Evaluation is long-running; check Render **Logs**; upgrade to Standard if needed |
+| `502` / timeout | Evaluation is long-running; check Render **Logs**; increase `request_timeout` or upgrade plan |
+| **Memory limit exceeded** / service restart | Use **Standard (2 GB)** plan; confirm env vars from `render.yaml`; only one large PDF evaluation runs at a time (`max_concurrent_pdf_jobs=1`). If OOM persists, lower `pdf_processing_batch_size` to `6` |
+| Evaluation slower than 3 minutes | Add comma-separated `API_KEYS` (multiple Gemini keys); confirm `pdf_render_workers=8` and `max_concurrent_evals=4` |
+| `503` “processing other evaluations” | Another user’s PDF is running; wait and retry (expected under load) |
 | Health check fails | Set `API_KEY` on Render |
 | Blank page on Vercel | Confirm Root Directory is `frontend` and Output is `dist` |
 

@@ -4,13 +4,16 @@ Async Q&A Extraction Service - Parallel batch extraction for high performance.
 
 import re
 import json
-from typing import List, Dict, Any
+import time
+from typing import List, Dict, Any, Optional
 from PIL import Image
 import io
 import asyncio
 
 from app.core.logging_config import logger
+from app.core.memory_utils import release_memory
 from app.services.gemini_service_async import get_async_gemini_service
+from app.services.pdf_service import get_pdf_service
 from app.utils.text_utils import sanitize_text_for_prompt, parse_ai_json_response
 from app.config.settings import get_settings
 
@@ -23,78 +26,144 @@ class AsyncQAExtractionService:
         self.gemini_service = get_async_gemini_service()
         self.settings = get_settings()
     
+    async def extract_qa_from_pdf_async(
+        self,
+        pdf_bytes: bytes,
+        page_limit: Optional[int] = None,
+        zoom_factor: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fast path: parallel-render pages in batches, then parallel Gemini OCR per batch.
+        Peak RAM ≈ one batch of images (not all 80 pages).
+        """
+        settings = self.settings
+        pdf_service = get_pdf_service()
+        batch_size = settings.pdf_processing_batch_size
+        zoom = zoom_factor if zoom_factor is not None else settings.pdf_zoom_factor
+        limit = page_limit if page_limit is not None else settings.default_page_limit
+        extract_start = time.time()
+
+        page_indices = await asyncio.to_thread(
+            pdf_service.resolve_page_indices,
+            pdf_bytes,
+            limit,
+            None,
+            None,
+        )
+
+        if not page_indices:
+            logger.warning("No pages to process in PDF")
+            return []
+
+        total_pages = len(page_indices)
+        num_batches = (total_pages + batch_size - 1) // batch_size
+        logger.info(
+            f"Parallel Q&A extraction: {total_pages} pages, "
+            f"{num_batches} batches of {batch_size}, "
+            f"{settings.pdf_render_workers} render workers, zoom={zoom}"
+        )
+
+        page_results: List[Dict[str, Any]] = []
+
+        for batch_num, batch_start in enumerate(range(0, total_pages, batch_size), 1):
+            batch_indices = page_indices[batch_start : batch_start + batch_size]
+            batch_t0 = time.time()
+
+            rendered = await pdf_service.render_pages_parallel_async(
+                pdf_bytes=pdf_bytes,
+                page_indices=batch_indices,
+                zoom_factor=zoom,
+            )
+
+            if not rendered:
+                logger.warning(f"Batch {batch_num}: no pages rendered")
+                continue
+
+            batch_images = [img for _, img in rendered]
+            batch_page_numbers = [num for num, _ in rendered]
+
+            page_results.extend(
+                await self._extract_page_batch(batch_images, batch_page_numbers)
+            )
+            release_memory(rendered, batch_images)
+
+            logger.info(
+                f"Batch {batch_num}/{num_batches} done in {time.time() - batch_t0:.1f}s "
+                f"(pages {batch_page_numbers[0]}-{batch_page_numbers[-1]})"
+            )
+
+        extract_duration = time.time() - extract_start
+        qa_pairs = self._stitch_answers(page_results)
+        release_memory(page_results)
+
+        logger.info(
+            f"Extracted {len(qa_pairs)} Q&A pairs from {total_pages} pages "
+            f"in {extract_duration:.1f}s "
+            f"({extract_duration / max(total_pages, 1):.2f}s/page)"
+        )
+        return qa_pairs
+
     async def extract_qa_from_images_async(self, images_data: List[bytes]) -> List[Dict[str, Any]]:
         """
-        Extract Q&A pairs from PDF images using parallel batch processing.
-        
-        OPTIMIZED: Processes multiple pages in parallel batches for faster extraction.
-        
-        Args:
-            images_data: List of image bytes from PDF pages
-        
-        Returns:
-            List of Q&A dictionaries
+        Extract Q&A pairs from pre-loaded page images (legacy path).
+        Prefer extract_qa_from_pdf_async() in production to limit RAM usage.
         """
         logger.info(f"Starting ASYNC Q&A extraction from {len(images_data)} pages")
-        
-        # Extract pages in parallel batches
         page_results = await self._extract_pages_in_batches(images_data)
-        
-        # Stitch answers across pages
         qa_pairs = self._stitch_answers(page_results)
-        
+        release_memory(images_data, page_results)
         logger.info(f"Extracted {len(qa_pairs)} Q&A pairs using async batch processing")
         return qa_pairs
     
+    async def _extract_page_batch(
+        self,
+        batch_images: List[bytes],
+        batch_page_numbers: List[int],
+    ) -> List[Dict[str, Any]]:
+        """Run Gemini extraction for one small batch of pages, then free image memory."""
+        page_specific_prompt = self._get_extraction_prompt()
+        if batch_page_numbers:
+            logger.info(
+                f"Processing batch: pages {batch_page_numbers[0]} to {batch_page_numbers[-1]}"
+            )
+
+        tasks = [
+            self._extract_single_page(image_bytes, page_number, page_specific_prompt)
+            for image_bytes, page_number in zip(batch_images, batch_page_numbers)
+        ]
+        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        parsed: List[Dict[str, Any]] = []
+        for page_number, result in zip(batch_page_numbers, batch_results):
+            if isinstance(result, Exception):
+                logger.error(f"Page {page_number} extraction failed: {result}")
+                parsed.append(self._create_fallback_page_data(page_number))
+            elif result:
+                parsed.append(result)
+            else:
+                logger.warning(f"Page {page_number}: No result")
+                parsed.append(self._create_fallback_page_data(page_number))
+
+        release_memory(batch_images)
+        return parsed
+
     async def _extract_pages_in_batches(self, images_data: List[bytes]) -> List[Dict[str, Any]]:
-        """
-        Extract content from pages in parallel batches.
-        
-        PERFORMANCE BOOST: Instead of processing 1 page at a time (sequential),
-        this processes N pages in parallel (configurable batch size).
-        """
-        all_page_results = []
+        """Extract from a pre-loaded image list in bounded parallel batches."""
+        all_page_results: List[Dict[str, Any]] = []
         total_pages = len(images_data)
         batch_size = self.settings.extraction_batch_size
-        
+
         logger.info(f"Extracting {total_pages} pages in batches of {batch_size}")
-        
-        page_specific_prompt = self._get_extraction_prompt()
-        
-        # Process pages in batches
+
         for batch_start in range(0, total_pages, batch_size):
             batch_end = min(batch_start + batch_size, total_pages)
             batch_images = images_data[batch_start:batch_end]
-            
-            logger.info(f"Processing batch: pages {batch_start + 1} to {batch_end}")
-            
-            # Create tasks for parallel extraction
-            tasks = []
-            for page_idx, image_bytes in enumerate(batch_images):
-                actual_page_number = batch_start + page_idx + 1
-                task = self._extract_single_page(
-                    image_bytes,
-                    actual_page_number,
-                    page_specific_prompt
-                )
-                tasks.append(task)
-            
-            # Execute batch in parallel
-            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Handle results
-            for page_idx, result in enumerate(batch_results):
-                actual_page_number = batch_start + page_idx + 1
-                
-                if isinstance(result, Exception):
-                    logger.error(f"Page {actual_page_number} extraction failed: {result}")
-                    all_page_results.append(self._create_fallback_page_data(actual_page_number))
-                elif result:
-                    all_page_results.append(result)
-                else:
-                    logger.warning(f"Page {actual_page_number}: No result")
-                    all_page_results.append(self._create_fallback_page_data(actual_page_number))
-        
+            batch_page_numbers = list(range(batch_start + 1, batch_end + 1))
+            all_page_results.extend(
+                await self._extract_page_batch(batch_images, batch_page_numbers)
+            )
+            release_memory()
+
         return all_page_results
     
     async def _extract_single_page(

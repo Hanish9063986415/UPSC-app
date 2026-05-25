@@ -3,7 +3,7 @@ services:
     name: upsc-backend
     runtime: docker
     rootDir: backend
-    plan: starter
+    plan: standard
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
@@ -19,11 +19,30 @@ services:
         sync: false
       - key: PYTHON_VERSION
         value: "3.12.8"
+      # Performance profile: ~80 pages in under 3 minutes on Standard (2 GB)
       - key: max_workers
-        value: "4"
+        value: "8"
+      - key: pdf_render_workers
+        value: "8"
       - key: max_concurrent_evals
-        value: "2"
+        value: "4"
+      - key: max_concurrent_model_answers
+        value: "4"
       - key: max_concurrent_requests
-        value: "20"
+        value: "8"
+      - key: max_concurrent_pdf_jobs
+        value: "1"
+      - key: extraction_batch_size
+        value: "8"
+      - key: pdf_processing_batch_size
+        value: "8"
+      - key: page_image_format
+        value: "JPEG"
+      - key: page_image_jpeg_quality
+        value: "85"
+      - key: pdf_zoom_factor
+        value: "2"
+      - key: target_eval_duration_seconds
+        value: "180"
       - key: request_timeout
         value: "300"
