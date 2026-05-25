@@ -1,0 +1,9 @@
+{
+  "name": "upsc-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "UPSC Answer Evaluation - FastAPI backend + React frontend",
+  "scripts": {
+    "start": "python main.py"
+  }
+}

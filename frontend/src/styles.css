@@ -1,0 +1,270 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(140deg, #fff7ea, #ffe6bf);
+  color: #122a5b;
+}
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.hero, .header, .card {
+  background: #fffefb;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+  border: 1px solid #ecd6b2;
+  box-shadow: 0 12px 28px rgba(18, 42, 91, 0.1);
+}
+
+.eyebrow {
+  display: inline-block;
+  background: rgba(242, 163, 58, 0.14);
+  border: 1px solid rgba(227, 140, 30, 0.35);
+  color: #b56f08;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-block;
+  text-decoration: none;
+  border: none;
+  background: linear-gradient(135deg, #122a5b, #2154b5);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #475569;
+}
+
+input {
+  width: 100%;
+  margin-bottom: 12px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #d7c9ad;
+}
+
+label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.status-text.done {
+  color: #1f6f48;
+  font-weight: 700;
+}
+
+.progress-list {
+  padding-left: 18px;
+  margin: 0;
+}
+
+.progress-list li {
+  margin-bottom: 6px;
+  color: #4a5f86;
+}
+
+.muted {
+  color: #4a5f86;
+}
+
+.results-card {
+  min-height: 200px;
+}
+
+.question {
+  border: 1px solid #ecd6b2;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 14px;
+  background: #fff;
+}
+
+.question.error {
+  border-color: #cf5f50;
+  background: #fff5f4;
+}
+
+.error-text {
+  color: #a34336;
+}
+
+.question-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.question-head h3 {
+  margin: 0;
+  color: #122a5b;
+}
+
+.score-pill {
+  background: linear-gradient(135deg, #ff9f1a, #f07d00);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.score-pill span {
+  opacity: 0.9;
+  font-weight: 500;
+}
+
+.question-text {
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.sub-card {
+  background: #fffdf8;
+  border: 1px solid #ecd6b2;
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.sub-card h4 {
+  margin: 0 0 8px;
+  color: #1f376d;
+}
+
+.sub-card.advice {
+  border-left: 4px solid #2154b5;
+}
+
+.sub-card.model {
+  border-left: 4px solid #2f9d6a;
+}
+
+.answer-text, .model-text {
+  white-space: pre-wrap;
+  line-height: 1.65;
+  font-family: inherit;
+  margin: 0;
+}
+
+.param-block {
+  border-top: 1px dashed #ecd6b2;
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.param-block:first-child {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.param-block h4 {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+.param-marks {
+  color: #b56f08;
+  font-weight: 700;
+}
+
+.tag-list ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.tag-list.good strong {
+  color: #1f6f48;
+}
+
+.tag-list.warn strong {
+  color: #9b5a00;
+}
+
+.ideal-content {
+  margin-top: 8px;
+  color: #4a5f86;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  background: rgba(33, 84, 181, 0.1);
+  color: #122a5b;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+}
+
+.summary-card .summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.summary-grid div {
+  background: #fffdf8;
+  border: 1px solid #ecd6b2;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-grid span {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #122a5b;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
