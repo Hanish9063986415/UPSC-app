@@ -65,6 +65,8 @@ python main.py --api-only
 
 ## Deployment
 
+**Full step-by-step guide:** [DEPLOYMENT.md](./DEPLOYMENT.md)
+
 - **Frontend** → Vercel (`frontend/` as root directory)
 - **Backend** → Render (see `render.yaml`)
 - **Database** → Not required
