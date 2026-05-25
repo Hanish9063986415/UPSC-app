@@ -53,6 +53,9 @@ async def health_check():
         "environment": settings.environment,
         "performance": {
             "target_eval_duration_seconds": settings.target_eval_duration_seconds,
+            "gemini_api_keys_configured": len(
+                [k for k in (settings.api_keys or "").split(",") if k.strip()]
+            ),
             "max_concurrent_pdf_jobs": settings.max_concurrent_pdf_jobs,
             "max_concurrent_evals": settings.max_concurrent_evals,
             "max_concurrent_model_answers": settings.max_concurrent_model_answers,

@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     allowed_origins: str = Field(default="", validation_alias="ALLOWED_ORIGINS")
 
     # Gemini AI Configuration
-    api_key: str = Field(validation_alias="API_KEY")
+    api_key: Optional[str] = Field(default=None, validation_alias="API_KEY")
     gemini_model: str = "models/gemini-2.5-flash"
 
     # API Settings
@@ -104,6 +104,27 @@ class Settings(BaseSettings):
 
     api_keys: Optional[str] = Field(default=None, validation_alias="API_KEYS")
     request_timeout: int = 300
+
+    @model_validator(mode="after")
+    def resolve_gemini_api_keys(self) -> "Settings":
+        """Accept either API_KEYS (comma-separated) or a single API_KEY."""
+        keys: list[str] = []
+
+        if self.api_keys and self.api_keys.strip():
+            keys = [k.strip() for k in self.api_keys.split(",") if k.strip()]
+
+        if self.api_key and self.api_key.strip():
+            if self.api_key.strip() not in keys:
+                keys.insert(0, self.api_key.strip())
+
+        if not keys:
+            raise ValueError(
+                "Set API_KEYS (recommended: key1,key2,key3) or API_KEY on Render."
+            )
+
+        object.__setattr__(self, "api_key", keys[0])
+        object.__setattr__(self, "api_keys", ",".join(keys))
+        return self
 
     @model_validator(mode="after")
     def apply_production_performance_profile(self) -> "Settings":

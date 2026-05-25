@@ -9,6 +9,8 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
+      - key: API_KEYS
+        sync: false
       - key: API_KEY
         sync: false
       - key: GEMINI_MODEL

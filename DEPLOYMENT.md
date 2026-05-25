@@ -36,11 +36,42 @@ When Render asks for values marked `sync: false`, enter:
 
 | Key | Value (exact format) |
 |-----|----------------------|
-| `API_KEY` | Your Gemini API key (paste once, no quotes) |
+| `API_KEYS` | **3 Gemini keys, comma-separated, no spaces** (see section below) |
+| `API_KEY` | *(optional)* Same as your **first** key — only if Render requires it during blueprint setup |
 | `FRONTEND_URL` | `https://placeholder.vercel.app` *(temporary — update in Step 3)* |
 | `ALLOWED_ORIGINS` | `https://placeholder.vercel.app` *(temporary — update in Step 3)* |
 
-All other variables are set automatically by `render.yaml`.
+All performance variables are set automatically by `render.yaml`.
+
+### How to add 3 Gemini API keys (recommended format)
+
+1. Create **3 keys** at [Google AI Studio](https://aistudio.google.com/apikey) (one per Google account, or three projects).
+2. In Render → **Environment**, add **one** variable named `API_KEYS`:
+
+```
+AIzaSyAAAAAAAA,key2_AIzaSyBBBBBBBB,key3_AIzaSyCCCCCCCC
+```
+
+**Rules (important):**
+
+| Do | Don't |
+|----|--------|
+| Comma `,` between keys only | No spaces: `key1, key2` |
+| Paste raw keys only | No quotes: `"AIza..."` |
+| No line breaks | No JSON array |
+| Exactly 3 keys for best speed | Don't commit keys to GitHub |
+
+**Example (replace with your real keys):**
+
+```
+AIzaSyAbc123...,AIzaSyDef456...,AIzaSyGhi789...
+```
+
+3. **Save** → Render redeploys.
+4. Verify in logs after deploy: `Configured 3 API keys for load distribution`
+5. Or open `BACKEND_URL/health` → `"gemini_api_keys_configured": 3`
+
+You can use **only** `API_KEYS` (no separate `API_KEY` needed). If you set both, `API_KEY` is merged with the list.
 
 ## 1.3 Choose plan and deploy
 
@@ -174,7 +205,8 @@ ALLOWED_ORIGINS=https://upsc-app.vercel.app,https://www.yourdomain.com
 
 | Key | Required | Example |
 |-----|----------|---------|
-| `API_KEY` | Yes | `AIza...` |
+| `API_KEYS` | **Yes (recommended)** | `AIza...1,AIza...2,AIza...3` |
+| `API_KEY` | Optional | First key only (if not using `API_KEYS`) |
 | `ENVIRONMENT` | Auto | `production` |
 | `GEMINI_MODEL` | Auto | `models/gemini-2.5-flash` |
 | `FRONTEND_URL` | Yes | `https://upsc-app.vercel.app` |
