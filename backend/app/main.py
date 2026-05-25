@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
-from app.api.routes_streaming import router as streaming_router
+from app.api.routes_streaming import health_check, router as streaming_router
 from app.config.settings import get_settings
 from app.core.logging_config import logger, setup_logging
 from app.services.gemini_service_async import get_async_gemini_service
@@ -47,7 +47,7 @@ def create_app() -> FastAPI:
         AI-powered evaluation of UPSC answer sheets with real-time streaming.
 
         ### Endpoints:
-        - `GET /api/health` - Health check
+        - `GET /health` or `GET /api/health` - Health check
         - `POST /api/evaluate` - Evaluate PDF (complete JSON)
         - `POST /api/evaluate-stream` - Evaluate PDF (streaming SSE)
         - `GET /api/live-visualization` - Real-time dashboard
@@ -77,6 +77,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(streaming_router, prefix="/api")
+    app.add_api_route("/health", health_check, methods=["GET"], tags=["Health"])
 
     @app.get("/", include_in_schema=False)
     async def redirect_to_home():

@@ -5,7 +5,7 @@ services:
     rootDir: backend
     plan: starter
     dockerfilePath: ./Dockerfile
-    healthCheckPath: /api/health
+    healthCheckPath: /health
     envVars:
       - key: ENVIRONMENT
         value: production

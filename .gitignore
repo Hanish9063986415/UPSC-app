@@ -4,6 +4,9 @@
 *$py.class
 my_venv/
 venv/
+node_modules/
+frontend/node_modules/
+frontend/dist/
 .dev-servers.json
 /docs
 

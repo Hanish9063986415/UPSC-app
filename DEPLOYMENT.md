@@ -60,7 +60,7 @@ Open in browser:
 
 | URL | Expected result |
 |-----|-----------------|
-| `BACKEND_URL/api/health` | JSON with `"status": "healthy"` |
+| `BACKEND_URL/health` | JSON with `"status": "healthy"` |
 | `BACKEND_URL/docs` | Swagger API documentation page |
 
 If health check fails, open **Logs** tab on Render and fix errors (usually missing `API_KEY`).
@@ -203,7 +203,7 @@ Do **not** add `DATABASE_URL` — database is not used.
 Root Directory:     backend
 Runtime:            Docker
 Dockerfile Path:    ./Dockerfile
-Health Check Path:  /api/health
+Health Check Path:  /health
 ```
 
 If using **Python** runtime (manual setup), set Start Command to:
