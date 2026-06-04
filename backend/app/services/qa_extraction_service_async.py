@@ -342,7 +342,7 @@ You are a highly specialized OCR model for UPSC handwritten answer sheets. Your 
             
             # Skip blank/failed pages
             if not answer_text or len(answer_text.strip()) < 10 or answer_text == "BLANK_PAGE":
-                logger.info(f"⏭️  Page {page_num}: Skipping - blank or insufficient content")
+                logger.info(f"[skip] Page {page_num}: blank or insufficient content")
                 continue
             
             # Check for new question
@@ -351,7 +351,7 @@ You are a highly specialized OCR model for UPSC handwritten answer sheets. Your 
                 if current_question:
                     final_qa_pairs.append(current_question)
                     page_range_str = ', '.join(str(p) for p in current_question['Page_Range'])
-                    logger.info(f"✅ Completed Q{current_question['Question Number']}: "
+                    logger.info(f"[ok] Completed Q{current_question['Question Number']}: "
                               f"{len(current_question['Answer'])} chars across {len(current_question['Page_Range'])} pages "
                               f"[Pages: {page_range_str}]")
                 
@@ -373,7 +373,7 @@ You are a highly specialized OCR model for UPSC handwritten answer sheets. Your 
                     "Page_Range": [page_num]
                 }
                 continuation_count = 0
-                logger.info(f"🆕 Started Q{q_num} on page {page_num} ({len(answer_text)} chars)")
+                logger.info(f"[new] Started Q{q_num} on page {page_num} ({len(answer_text)} chars)")
             else:
                 # Continuation page (NO question number means answer continues from previous page)
                 if current_question:
@@ -384,24 +384,24 @@ You are a highly specialized OCR model for UPSC handwritten answer sheets. Your 
                         current_question["Answer"] = answer_text
                     current_question["Page_Range"].append(page_num)
                     continuation_count += 1
-                    logger.info(f"📄 Page {page_num}: CONTINUATION of Q{current_question['Question Number']} "
+                    logger.info(f"[cont] Page {page_num}: continuation of Q{current_question['Question Number']} "
                               f"(+{len(answer_text)} chars, total: {len(current_question['Answer'])} chars, "
                               f"continuation #{continuation_count})")
                 else:
                     # Orphan content (no preceding question) - skip
-                    logger.warning(f"⚠️  Page {page_num}: ORPHAN content skipped "
+                    logger.warning(f"[orphan] Page {page_num}: content skipped "
                                  f"({len(answer_text)} chars, no preceding question)")
         
         # Add final question
         if current_question:
             final_qa_pairs.append(current_question)
             page_range_str = ', '.join(str(p) for p in current_question['Page_Range'])
-            logger.info(f"✅ Added FINAL question Q{current_question['Question Number']}: "
+            logger.info(f"[ok] Added FINAL question Q{current_question['Question Number']}: "
                       f"{len(current_question['Answer'])} chars across {len(current_question['Page_Range'])} pages "
                       f"[Pages: {page_range_str}]")
         
         logger.info(f"=" * 80)
-        logger.info(f"✅ STITCHING COMPLETE: {len(final_qa_pairs)} Q&A pairs extracted from {len(page_results)} pages")
+        logger.info(f"[done] Stitching complete: {len(final_qa_pairs)} Q&A pairs from {len(page_results)} pages")
         logger.info(f"=" * 80)
         return final_qa_pairs
 

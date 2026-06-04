@@ -36,6 +36,34 @@ class AsyncGeminiService:
         if not self._configured:
             self._initialize()
     
+    @staticmethod
+    def _validate_api_key(api_key: str, index: int, total: int) -> None:
+        """Fail fast if the Gemini API key is missing or rejected by Google."""
+        key = (api_key or "").strip()
+        if not key or key == "your_gemini_api_key_here":
+            raise RuntimeError(
+                "Gemini API key is missing or still a placeholder. "
+                "Copy backend/.env.example to backend/dev.env and set API_KEY "
+                "to a valid key from https://aistudio.google.com/apikey"
+            )
+        if not key.startswith("AIza"):
+            raise RuntimeError(
+                f"Gemini API key #{index} does not look valid (should start with AIza). "
+                "Check backend/dev.env for extra spaces or quotes."
+            )
+        try:
+            genai.configure(api_key=key)
+            next(iter(genai.list_models()), None)
+        except Exception as exc:
+            message = str(exc)
+            if "API_KEY_INVALID" in message or "API key not valid" in message:
+                raise RuntimeError(
+                    f"Gemini API key #{index}/{total} was rejected by Google (API_KEY_INVALID). "
+                    "Create a new key at https://aistudio.google.com/apikey, paste it into "
+                    "backend/dev.env as API_KEY=... (no quotes), then restart the server."
+                ) from exc
+            raise RuntimeError(f"Could not verify Gemini API key #{index}: {exc}") from exc
+
     def _initialize(self):
         """Configure and initialize the Gemini model with async support."""
         try:
@@ -51,12 +79,13 @@ class AsyncGeminiService:
                 self._api_keys = [settings.api_key]
                 logger.info("Configured single API key")
             
-            # Initialize models for each API key
+            # Initialize models for each API key (validate keys at startup)
             for idx, api_key in enumerate(self._api_keys):
+                self._validate_api_key(api_key, idx + 1, len(self._api_keys))
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel(settings.gemini_model)
                 self._models[idx] = model
-                logger.info(f"Initialized model {idx+1}/{len(self._api_keys)}")
+                logger.info(f"Initialized model {idx + 1}/{len(self._api_keys)}")
             
             # Set primary model
             self._model = self._models[0]

@@ -1,24 +1,15 @@
-import { Link, Route, Routes } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { Route, Routes } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import AppShell from "./components/AppShell";
 import QuestionResultCard from "./components/QuestionResultCard";
 import FinalSummaryCard from "./components/FinalSummaryCard";
+import QuestionNavigator from "./components/QuestionNavigator";
+import PaperAnalyticsPanel from "./components/PaperAnalyticsPanel";
+import ProgressTimeline from "./components/ProgressTimeline";
+import { getQuestionScores } from "./lib/evaluationMetrics";
+import { computePaperStats } from "./lib/paperAnalytics";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
-
-function Landing() {
-  return (
-    <div className="page">
-      <header className="hero">
-        <h1>UPSC Answer Evaluation System</h1>
-        <p>AI-powered evaluation with live streaming results</p>
-        <div className="row">
-          <Link className="btn" to="/dashboard">Open Dashboard</Link>
-          <a className="btn btn-secondary" href={`${API_BASE_URL}/docs`} target="_blank" rel="noreferrer">API Docs</a>
-        </div>
-      </header>
-    </div>
-  );
-}
 
 function parseSseChunk(chunk) {
   const line = chunk.split("\n").find((l) => l.startsWith("data: "));
@@ -38,7 +29,28 @@ function Dashboard() {
   const [questions, setQuestions] = useState([]);
   const [summary, setSummary] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [activeQuestionNumber, setActiveQuestionNumber] = useState(null);
   const canSubmit = useMemo(() => !!file && !busy, [file, busy]);
+  const paperStats = useMemo(() => (questions.length ? computePaperStats(questions) : null), [questions]);
+  const isComplete = status === "Completed";
+
+  useEffect(() => {
+    if (!questions.length) {
+      setActiveQuestionNumber(null);
+      return;
+    }
+    const exists = questions.some((q) => q.question_number === activeQuestionNumber);
+    if (!exists) {
+      const last = questions[questions.length - 1];
+      setActiveQuestionNumber(last?.question_number ?? null);
+    }
+  }, [questions, activeQuestionNumber]);
+
+  const handleSelectQuestion = (questionNumber) => {
+    setActiveQuestionNumber(questionNumber);
+    const el = document.getElementById(`question-${questionNumber}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const handleEvaluate = async (event) => {
     event.preventDefault();
@@ -48,6 +60,7 @@ function Dashboard() {
     setProgress([]);
     setQuestions([]);
     setSummary(null);
+    setActiveQuestionNumber(null);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -84,8 +97,10 @@ function Dashboard() {
             setProgress((prev) => [...prev, payload.message || "Progress update"]);
           } else if (type === "question_complete") {
             setQuestions((prev) => [...prev, payload]);
+            setActiveQuestionNumber(payload.question_number ?? null);
           } else if (type === "question_error") {
             setQuestions((prev) => [...prev, payload]);
+            setActiveQuestionNumber(payload.question_number ?? null);
           } else if (type === "final_summary") {
             setSummary(payload);
             setStatus("Completed");
@@ -101,58 +116,176 @@ function Dashboard() {
     }
   };
 
+  const fileLabel = file?.name
+    ? file.name.length > 42
+      ? `${file.name.slice(0, 41)}…`
+      : file.name
+    : "No file selected";
+
   return (
     <div className="page dashboard-page">
-      <header className="header">
-        <p className="eyebrow">Live evaluation</p>
-        <h1>UPSC Answer Evaluation Dashboard</h1>
-        <p>Upload a PDF to get marks, parameter analysis, feedback, and model answers.</p>
-      </header>
+      <section className="workspace-shell glass-card">
+        <div className="workspace-shell-grid">
+          <div className="workspace-intro">
+            <p className="eyebrow">Instamark · Live evaluation</p>
+            <h1>Answer evaluation workspace</h1>
+            <p className="workspace-lead">
+              Upload a PDF to get marks, parameter analysis, paper heatmaps, and model answers.
+            </p>
+            <div className="workspace-status-strip">
+              <div className="workspace-status-item">
+                <span className="workspace-status-label">Status</span>
+                <span className={`workspace-status-value${isComplete ? " done" : ""}`}>{status}</span>
+              </div>
+              {paperStats && (
+                <>
+                  <div className="workspace-status-item">
+                    <span className="workspace-status-label">Paper score</span>
+                    <span className={`workspace-status-value band-${paperStats.band}`}>
+                      {paperStats.percent}%
+                    </span>
+                  </div>
+                  <div className="workspace-status-item">
+                    <span className="workspace-status-label">Marks</span>
+                    <span className="workspace-status-value">
+                      {paperStats.totalAwarded}/{paperStats.totalPossible}
+                    </span>
+                  </div>
+                </>
+              )}
+              {questions.length > 0 && (
+                <div className="workspace-status-item">
+                  <span className="workspace-status-label">Questions</span>
+                  <span className="workspace-status-value">{questions.length}</span>
+                </div>
+              )}
+            </div>
+          </div>
 
-      <form onSubmit={handleEvaluate} className="card upload-card">
-        <label>Upload PDF</label>
-        <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-        <label>Page limit (1–100)</label>
-        <input type="number" min="1" max="100" value={pageLimit} onChange={(e) => setPageLimit(Number(e.target.value))} />
-        <button className="btn" disabled={!canSubmit} type="submit">
-          {busy ? "Evaluating..." : "Start Evaluation"}
-        </button>
-      </form>
+          <form onSubmit={handleEvaluate} className="workspace-upload-panel">
+            <h2 className="workspace-upload-title">Start evaluation</h2>
+            <p className="muted workspace-upload-hint">PDF answer sheet · streaming results as each question completes</p>
 
-      <div className="grid">
-        <section className="card status-card">
-          <h2>Status</h2>
-          <p className={`status-text ${status === "Completed" ? "done" : ""}`}>{status}</p>
-          <ul className="progress-list">
-            {progress.map((item, idx) => (
-              <li key={`${item}-${idx}`}>{item}</li>
-            ))}
-          </ul>
-        </section>
+            <div className="workspace-upload-fields">
+              <div className="workspace-field workspace-field-file">
+                <label htmlFor="pdf-upload">Upload PDF</label>
+                <div className="file-input-shell">
+                  <input
+                    id="pdf-upload"
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  />
+                </div>
+                <span className="file-selected-name" title={file?.name || ""}>
+                  {fileLabel}
+                </span>
+              </div>
 
-        <section className="card results-card">
+              <div className="workspace-field workspace-field-limit">
+                <label htmlFor="page-limit">Page limit</label>
+                <input
+                  id="page-limit"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={pageLimit}
+                  onChange={(e) => setPageLimit(Number(e.target.value))}
+                />
+                <span className="field-help">1–100 pages</span>
+              </div>
+            </div>
+
+            <button className="btn btn-primary workspace-submit" disabled={!canSubmit} type="submit">
+              {busy ? "Evaluating…" : "Start evaluation"}
+            </button>
+          </form>
+        </div>
+      </section>
+
+      {questions.length > 0 && (
+        <QuestionNavigator
+          questions={questions}
+          activeQuestionNumber={activeQuestionNumber}
+          onSelect={handleSelectQuestion}
+        />
+      )}
+
+      {questions.length > 0 && (
+        <PaperAnalyticsPanel questions={questions} onSelectQuestion={handleSelectQuestion} />
+      )}
+
+      <div className={`dashboard-main${questions.length === 0 ? " dashboard-main--idle" : ""}`}>
+        <aside className="glass-card status-card">
+          <div className="status-card-head">
+            <h2>Live progress</h2>
+            <span className={`status-live-pill${busy ? " active" : ""}`}>
+              {busy ? "Running" : isComplete ? "Done" : "Ready"}
+            </span>
+          </div>
+          <p className={`status-text ${isComplete ? "done" : ""}`}>{status}</p>
+          <ProgressTimeline steps={progress} isComplete={isComplete} />
+          {questions.length > 0 && (
+            <div className="status-scoreboard">
+              <strong>Scoreboard</strong>
+              <ul className="scoreboard-list">
+                {questions.map((q, idx) => {
+                  const s = getQuestionScores(q);
+                  return (
+                    <li key={`sb-${s.questionNumber}-${idx}`}>
+                      <button
+                        type="button"
+                        className={`scoreboard-link${
+                          s.questionNumber === activeQuestionNumber ? " active" : ""
+                        }`}
+                        onClick={() => handleSelectQuestion(s.questionNumber)}
+                      >
+                        Q{s.questionNumber}:{" "}
+                        {q.error ? "Error" : `${s.awarded}/${s.possible} (${s.percent}%)`}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+        </aside>
+
+        <section className="glass-card results-card">
           <h2>Results ({questions.length})</h2>
-          {questions.length === 0 && <p className="muted">Results will appear here as each question is evaluated.</p>}
+          {questions.length === 0 && (
+            <div className="results-empty">
+              <strong>No results yet</strong>
+              <p className="muted">
+                Upload your answer PDF and start evaluation. Question-wise feedback will appear here
+                in real time.
+              </p>
+            </div>
+          )}
           {questions.map((q, idx) => (
-            <QuestionResultCard key={`${q.question_number}-${q.current ?? idx}`} item={q} />
+            <QuestionResultCard
+              key={`${q.question_number}-${q.current ?? idx}`}
+              item={q}
+              isActive={q.question_number === activeQuestionNumber}
+              onActivate={setActiveQuestionNumber}
+            />
           ))}
         </section>
       </div>
 
-      <FinalSummaryCard summary={summary} />
+      <FinalSummaryCard summary={summary} questions={questions} />
 
-      <div className="row">
-        <Link className="btn btn-secondary" to="/">Back</Link>
-      </div>
     </div>
   );
 }
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-    </Routes>
+    <AppShell>
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Routes>
+    </AppShell>
   );
 }

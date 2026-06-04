@@ -40,7 +40,13 @@ def setup_logging(
         datefmt='%H:%M:%S'
     )
     
-    # Console handler
+    # Console handler (UTF-8 on Windows avoids UnicodeEncodeError for log messages)
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
+
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(console_formatter)

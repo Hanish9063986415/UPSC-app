@@ -1,9 +1,13 @@
-{
-  "name": "upsc-app",
-  "version": "1.0.0",
-  "private": true,
-  "description": "UPSC Answer Evaluation - FastAPI backend + React frontend",
-  "scripts": {
-    "start": "python main.py"
-  }
-}
+{
+  "name": "upsc-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "UPSC Answer Evaluation - FastAPI backend + React frontend",
+  "scripts": {
+    "start": "python main.py",
+    "build": "npm run build --prefix frontend",
+    "dev": "npm run dev --prefix frontend",
+    "preview": "npm run preview --prefix frontend",
+    "install:frontend": "npm install --prefix frontend"
+  }
+}

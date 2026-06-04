@@ -412,6 +412,8 @@ def wait_for_port(port: int, timeout: float = 90.0) -> bool:
 def subprocess_env() -> dict[str, str]:
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+    if os.name == "nt":
+        env["PYTHONUTF8"] = "1"
     return env
 
 

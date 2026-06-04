@@ -1,41 +1,67 @@
-function ParameterBlock({ param }) {
-  const analysis = param?.student_analysis || {};
-  const enhancement = param?.upsc_enhancement || {};
+import { useEffect, useRef, useState } from "react";
+import { getQuestionScores, getScoreBand } from "../lib/evaluationMetrics";
+import ParameterAccordion from "./ParameterAccordion";
+import QuestionAnalyticsOverview from "./QuestionAnalyticsOverview";
+import VerbatimText from "./VerbatimText";
+
+const EXTRACTED_ANSWER_PREVIEW_LINES = 4;
+
+function answerNeedsPreviewToggle(text) {
+  if (!text) return false;
+  const lines = text.split(/\r?\n/);
+  return lines.length > EXTRACTED_ANSWER_PREVIEW_LINES || text.length > 280;
+}
+
+function ExtractedAnswerSection({ text }) {
+  const [expanded, setExpanded] = useState(false);
+  const canToggle = answerNeedsPreviewToggle(text);
 
   return (
-    <div className="param-block">
-      <h4>
-        {param?.parameter_name || "Parameter"}
-        <span className="param-marks">
-          {analysis.marks_allocation ?? 0} / {param?.max_marks_for_parameter ?? 0}
-        </span>
-      </h4>
-      {analysis.what_student_wrote && (
-        <p><strong>What you wrote:</strong> {analysis.what_student_wrote}</p>
-      )}
-      {Array.isArray(analysis.strengths_for_upsc) && analysis.strengths_for_upsc.length > 0 && (
-        <div className="tag-list good">
-          <strong>Strengths:</strong>
-          <ul>{analysis.strengths_for_upsc.map((s, i) => <li key={i}>{s}</li>)}</ul>
-        </div>
-      )}
-      {Array.isArray(analysis.missing_upsc_elements) && analysis.missing_upsc_elements.length > 0 && (
-        <div className="tag-list warn">
-          <strong>Missing elements:</strong>
-          <ul>{analysis.missing_upsc_elements.map((s, i) => <li key={i}>{s}</li>)}</ul>
-        </div>
-      )}
-      {enhancement.ideal_upsc_content && (
-        <p className="ideal-content"><strong>Ideal UPSC content:</strong> {enhancement.ideal_upsc_content}</p>
-      )}
-    </div>
+    <section className="sub-card extracted-answer-section">
+      <div className="extracted-answer-head">
+        <h4>Your answer (extracted)</h4>
+        {canToggle && (
+          <button
+            type="button"
+            className="extracted-answer-view-more"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+          >
+            {expanded ? "Show less" : "View more"}
+          </button>
+        )}
+      </div>
+      <div
+        className={`extracted-answer-body${canToggle && !expanded ? " is-collapsed" : " is-expanded"}`}
+      >
+        <VerbatimText
+          text={text}
+          as="div"
+          className="answer-text verbatim-text extracted-answer-text"
+        />
+      </div>
+    </section>
   );
 }
 
-export default function QuestionResultCard({ item }) {
+export default function QuestionResultCard({ item, isActive, onActivate }) {
+  const cardRef = useRef(null);
+  const [expandAllParams, setExpandAllParams] = useState(false);
+
+  useEffect(() => {
+    if (isActive && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [isActive]);
+
   if (item.error) {
     return (
-      <article className="question error">
+      <article
+        ref={cardRef}
+        id={`question-${item.question_number}`}
+        className={`question surface-light error${isActive ? " active" : ""}`}
+        onMouseEnter={() => onActivate?.(item.question_number)}
+      >
         <h3>Question {item.question_number}</h3>
         <p className="error-text">{item.error}</p>
       </article>
@@ -51,18 +77,27 @@ export default function QuestionResultCard({ item }) {
     item.model_answer?.full_text ||
     "";
 
-  const awarded = overall.total_param_marks_awarded ?? 0;
-  const possible = overall.total_param_marks_possible ?? item.marks ?? 0;
-  const pct = possible > 0 ? Math.round((awarded / possible) * 100) : 0;
+  const scores = getQuestionScores(item);
+  const band = getScoreBand(scores.percent);
 
   return (
-    <article className="question">
+    <article
+      ref={cardRef}
+      id={`question-${item.question_number}`}
+      className={`question surface-light band-${band}${isActive ? " active" : ""}`}
+      onMouseEnter={() => onActivate?.(item.question_number)}
+    >
       <div className="question-head">
         <h3>Question {item.question_number}</h3>
-        <div className="score-pill">
-          {awarded} / {possible} <span>({pct}%)</span>
+        <div className={`score-pill band-${band}`}>
+          {scores.awarded} / {scores.possible} <span>({scores.percent}%)</span>
         </div>
       </div>
+
+      <section className="sub-card overview-analytics-card">
+        <h4>Question analytics</h4>
+        <QuestionAnalyticsOverview item={item} />
+      </section>
 
       <p className="question-text">{item.question}</p>
 
@@ -77,44 +112,57 @@ export default function QuestionResultCard({ item }) {
         </section>
       )}
 
-      {evaluation.student_answer && (
-        <section className="sub-card">
-          <h4>Your answer (extracted)</h4>
-          <p className="answer-text">{evaluation.student_answer}</p>
-        </section>
+      {evaluation.student_answer != null && evaluation.student_answer !== "" && (
+        <ExtractedAnswerSection text={evaluation.student_answer} />
       )}
 
       {parameters.length > 0 && (
         <section className="sub-card">
-          <h4>Parameter-wise analysis</h4>
-          {parameters.map((p, i) => (
-            <ParameterBlock key={i} param={p} />
-          ))}
+          <div className="sub-card-head-row">
+            <h4>Parameter-wise analysis</h4>
+            <button
+              type="button"
+              className="btn-text"
+              onClick={() => setExpandAllParams((v) => !v)}
+            >
+              {expandAllParams ? "Collapse all" : "Expand all feedback"}
+            </button>
+          </div>
+          <p className="muted sub-card-hint">
+            All evaluation text is shown exactly as returned — expand a parameter to read it.
+          </p>
+          <ParameterAccordion
+            key={expandAllParams ? "params-open" : "params-closed"}
+            parameters={parameters}
+            expandAll={expandAllParams}
+          />
         </section>
       )}
 
-      {overall.final_upsc_advice && (
+      {overall.final_upsc_advice != null && overall.final_upsc_advice !== "" && (
         <section className="sub-card advice">
           <h4>Final advice</h4>
-          <p>{overall.final_upsc_advice}</p>
+          <VerbatimText text={overall.final_upsc_advice} className="verbatim-text verbatim-block" />
         </section>
       )}
 
       {Array.isArray(overall.keywords_for_success) && overall.keywords_for_success.length > 0 && (
-        <section className="sub-card">
+        <section className="sub-card keywords-section">
           <h4>Keywords for success</h4>
           <div className="chips">
-            {overall.keywords_for_success.slice(0, 12).map((k, i) => (
-              <span key={i} className="chip">{k}</span>
+            {overall.keywords_for_success.map((k, i) => (
+              <span key={i} className="chip">
+                {k}
+              </span>
             ))}
           </div>
         </section>
       )}
 
-      {modelText && (
+      {modelText !== "" && (
         <section className="sub-card model">
           <h4>Model answer</h4>
-          <pre className="model-text">{modelText}</pre>
+          <VerbatimText text={modelText} as="pre" className="model-text verbatim-text" />
         </section>
       )}
     </article>
