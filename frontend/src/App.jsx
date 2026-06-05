@@ -1,13 +1,19 @@
 import { Route, Routes } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "./components/AppShell";
 import QuestionResultCard from "./components/QuestionResultCard";
 import FinalSummaryCard from "./components/FinalSummaryCard";
 import QuestionNavigator from "./components/QuestionNavigator";
 import PaperAnalyticsPanel from "./components/PaperAnalyticsPanel";
 import ProgressTimeline from "./components/ProgressTimeline";
+import WorkspaceNextSteps from "./components/WorkspaceNextSteps";
 import { getQuestionScores } from "./lib/evaluationMetrics";
-import { computePaperStats } from "./lib/paperAnalytics";
+import { calculateEvaluationPrice, formatInr, PRICE_PER_PAGE_INR } from "./lib/pdfPricing";
+import {
+  addInstamarkTransaction,
+  loadInstamarkTransactions,
+  updateInstamarkTransaction
+} from "./lib/instamarkTransactions";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -23,15 +29,35 @@ function parseSseChunk(chunk) {
 
 function Dashboard() {
   const [file, setFile] = useState(null);
-  const [pageLimit, setPageLimit] = useState(80);
+  const [pdfMeta, setPdfMeta] = useState({
+    pageCount: null,
+    totalPrice: null,
+    loading: false,
+    error: ""
+  });
   const [status, setStatus] = useState("Idle");
   const [progress, setProgress] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [summary, setSummary] = useState(null);
   const [busy, setBusy] = useState(false);
   const [activeQuestionNumber, setActiveQuestionNumber] = useState(null);
-  const canSubmit = useMemo(() => !!file && !busy, [file, busy]);
-  const paperStats = useMemo(() => (questions.length ? computePaperStats(questions) : null), [questions]);
+  const [instamarkTransactions, setInstamarkTransactions] = useState(() =>
+    loadInstamarkTransactions()
+  );
+  const activeTransactionIdRef = useRef(null);
+
+  const refreshInstamarkTransactions = () => {
+    setInstamarkTransactions(loadInstamarkTransactions());
+  };
+  const canSubmit = useMemo(
+    () =>
+      !!file &&
+      pdfMeta.pageCount > 0 &&
+      !pdfMeta.loading &&
+      !pdfMeta.error &&
+      !busy,
+    [file, pdfMeta, busy]
+  );
   const isComplete = status === "Completed";
 
   useEffect(() => {
@@ -45,6 +71,33 @@ function Dashboard() {
       setActiveQuestionNumber(last?.question_number ?? null);
     }
   }, [questions, activeQuestionNumber]);
+
+  const handleFileChange = async (event) => {
+    const selected = event.target.files?.[0] || null;
+    setFile(selected);
+    setPdfMeta({ pageCount: null, totalPrice: null, loading: false, error: "" });
+
+    if (!selected) return;
+
+    setPdfMeta((prev) => ({ ...prev, loading: true, error: "" }));
+    try {
+      const { getPdfPageCount: readPageCount } = await import("./lib/pdfPageCount");
+      const pageCount = await readPageCount(selected);
+      setPdfMeta({
+        pageCount,
+        totalPrice: calculateEvaluationPrice(pageCount),
+        loading: false,
+        error: ""
+      });
+    } catch (error) {
+      setPdfMeta({
+        pageCount: null,
+        totalPrice: null,
+        loading: false,
+        error: error?.message || "Could not read this PDF."
+      });
+    }
+  };
 
   const handleSelectQuestion = (questionNumber) => {
     setActiveQuestionNumber(questionNumber);
@@ -62,9 +115,18 @@ function Dashboard() {
     setSummary(null);
     setActiveQuestionNumber(null);
 
+    const transactionId = addInstamarkTransaction({
+      fileName: file.name,
+      pageCount: pdfMeta.pageCount,
+      amount: pdfMeta.totalPrice
+    });
+    activeTransactionIdRef.current = transactionId;
+    refreshInstamarkTransactions();
+
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("page_limit", String(pageLimit));
+
+    let evaluationSucceeded = false;
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/evaluate-stream`, {
@@ -104,14 +166,44 @@ function Dashboard() {
           } else if (type === "final_summary") {
             setSummary(payload);
             setStatus("Completed");
+            evaluationSucceeded = true;
+            updateInstamarkTransaction(activeTransactionIdRef.current, {
+              status: "completed",
+              completedAt: new Date().toISOString(),
+              questionCount: payload.total_questions ?? null
+            });
+            refreshInstamarkTransactions();
           } else if (type === "error") {
             setStatus(payload.message || "Error");
+            updateInstamarkTransaction(activeTransactionIdRef.current, {
+              status: "failed",
+              completedAt: new Date().toISOString()
+            });
+            refreshInstamarkTransactions();
           }
         });
       }
     } catch (error) {
       setStatus(`Error: ${error.message}`);
+      updateInstamarkTransaction(activeTransactionIdRef.current, {
+        status: "failed",
+        completedAt: new Date().toISOString()
+      });
+      refreshInstamarkTransactions();
     } finally {
+      if (!evaluationSucceeded && activeTransactionIdRef.current) {
+        const current = loadInstamarkTransactions().find(
+          (tx) => tx.id === activeTransactionIdRef.current
+        );
+        if (current?.status === "processing") {
+          updateInstamarkTransaction(activeTransactionIdRef.current, {
+            status: "failed",
+            completedAt: new Date().toISOString()
+          });
+          refreshInstamarkTransactions();
+        }
+      }
+      activeTransactionIdRef.current = null;
       setBusy(false);
     }
   };
@@ -125,46 +217,10 @@ function Dashboard() {
   return (
     <div className="page dashboard-page">
       <section className="workspace-shell glass-card">
-        <div className="workspace-shell-grid">
-          <div className="workspace-intro">
-            <p className="eyebrow">Instamark · Live evaluation</p>
-            <h1>Answer evaluation workspace</h1>
-            <p className="workspace-lead">
-              Upload a PDF to get marks, parameter analysis, paper heatmaps, and model answers.
-            </p>
-            <div className="workspace-status-strip">
-              <div className="workspace-status-item">
-                <span className="workspace-status-label">Status</span>
-                <span className={`workspace-status-value${isComplete ? " done" : ""}`}>{status}</span>
-              </div>
-              {paperStats && (
-                <>
-                  <div className="workspace-status-item">
-                    <span className="workspace-status-label">Paper score</span>
-                    <span className={`workspace-status-value band-${paperStats.band}`}>
-                      {paperStats.percent}%
-                    </span>
-                  </div>
-                  <div className="workspace-status-item">
-                    <span className="workspace-status-label">Marks</span>
-                    <span className="workspace-status-value">
-                      {paperStats.totalAwarded}/{paperStats.totalPossible}
-                    </span>
-                  </div>
-                </>
-              )}
-              {questions.length > 0 && (
-                <div className="workspace-status-item">
-                  <span className="workspace-status-label">Questions</span>
-                  <span className="workspace-status-value">{questions.length}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
           <form onSubmit={handleEvaluate} className="workspace-upload-panel">
-            <h2 className="workspace-upload-title">Start evaluation</h2>
-            <p className="muted workspace-upload-hint">PDF answer sheet · streaming results as each question completes</p>
+            <p className="eyebrow">Instamark · Live evaluation</p>
+            <h1 className="workspace-upload-title">Answer evaluation workspace</h1>
+            <p className="muted workspace-upload-hint">Upload your PDF answer sheet to begin</p>
 
             <div className="workspace-upload-fields">
               <div className="workspace-field workspace-field-file">
@@ -174,33 +230,68 @@ function Dashboard() {
                     id="pdf-upload"
                     type="file"
                     accept=".pdf"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    onChange={handleFileChange}
                   />
                 </div>
                 <span className="file-selected-name" title={file?.name || ""}>
                   {fileLabel}
                 </span>
               </div>
-
-              <div className="workspace-field workspace-field-limit">
-                <label htmlFor="page-limit">Page limit</label>
-                <input
-                  id="page-limit"
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={pageLimit}
-                  onChange={(e) => setPageLimit(Number(e.target.value))}
-                />
-                <span className="field-help">1–100 pages</span>
-              </div>
             </div>
 
+            {file && (
+              <div
+                className={`pdf-pricing-card${pdfMeta.loading ? " is-loading" : ""}${
+                  pdfMeta.error ? " has-error" : ""
+                }${pdfMeta.pageCount ? " is-ready" : ""}`}
+              >
+                {pdfMeta.loading && (
+                  <>
+                    <span className="pdf-pricing-label">Checking PDF</span>
+                    <p className="pdf-pricing-message">Reading total pages…</p>
+                  </>
+                )}
+
+                {!pdfMeta.loading && pdfMeta.error && (
+                  <>
+                    <span className="pdf-pricing-label">PDF check failed</span>
+                    <p className="pdf-pricing-error">{pdfMeta.error}</p>
+                  </>
+                )}
+
+                {!pdfMeta.loading && !pdfMeta.error && pdfMeta.pageCount > 0 && (
+                  <>
+                    <div className="pdf-pricing-head">
+                      <span className="pdf-pricing-label">Evaluation cost</span>
+                      <span className="pdf-pricing-pages">
+                        {pdfMeta.pageCount} page{pdfMeta.pageCount === 1 ? "" : "s"} detected
+                      </span>
+                    </div>
+                    <div className="pdf-pricing-rows">
+                      <div className="pdf-pricing-row">
+                        <span>Rate</span>
+                        <span>{formatInr(PRICE_PER_PAGE_INR)} per page</span>
+                      </div>
+                      <div className="pdf-pricing-row pdf-pricing-total">
+                        <span>Total amount</span>
+                        <strong>{formatInr(pdfMeta.totalPrice)}</strong>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             <button className="btn btn-primary workspace-submit" disabled={!canSubmit} type="submit">
-              {busy ? "Evaluating…" : "Start evaluation"}
+              {busy
+                ? "Evaluating…"
+                : pdfMeta.loading
+                  ? "Checking PDF…"
+                  : canSubmit
+                    ? `Start evaluation · ${formatInr(pdfMeta.totalPrice)}`
+                    : "Start evaluation"}
             </button>
           </form>
-        </div>
       </section>
 
       {questions.length > 0 && (
@@ -273,7 +364,14 @@ function Dashboard() {
         </section>
       </div>
 
-      <FinalSummaryCard summary={summary} questions={questions} />
+      <FinalSummaryCard
+        summary={summary}
+        questions={questions}
+        sourceFileName={file?.name}
+        canDownload={isComplete && questions.length > 0}
+      />
+
+      <WorkspaceNextSteps transactions={instamarkTransactions} />
 
     </div>
   );

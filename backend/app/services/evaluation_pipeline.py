@@ -33,7 +33,7 @@ class EvaluationPipeline:
         self,
         pdf_bytes: bytes,
         filename: str,
-        page_limit: int,
+        page_limit: Optional[int] = None,
         on_progress: Optional[ProgressCallback] = None,
         on_question_complete: Optional[QuestionCallback] = None,
     ) -> Dict[str, Any]:
@@ -98,7 +98,7 @@ class EvaluationPipeline:
             logger.warning(
                 f"Evaluation exceeded target: {total_duration:.1f}s > {target}s "
                 f"(extract={extract_duration:.1f}s, eval={eval_duration:.1f}s, "
-                f"pages={page_limit}, questions={total_questions})"
+                f"pages={page_limit or 'all'}, questions={total_questions})"
             )
         else:
             logger.info(

@@ -18,16 +18,23 @@ from app.utils.json_utils import create_sse_event
 router = APIRouter()
 
 
-def _parse_page_limit(page_limit: Optional[str], default: int = 80) -> int:
+def _parse_page_limit(page_limit: Optional[str]) -> Optional[int]:
+    """Return None to process every page in the uploaded PDF."""
     if page_limit and page_limit.strip():
+        settings = get_settings()
         try:
             value = int(page_limit)
         except ValueError:
             raise HTTPException(status_code=400, detail="page_limit must be a valid integer")
-        if value < 1 or value > 100:
-            raise HTTPException(status_code=400, detail="page_limit must be between 1 and 100")
+        if value < 1:
+            raise HTTPException(status_code=400, detail="page_limit must be at least 1")
+        if value > settings.max_page_limit:
+            raise HTTPException(
+                status_code=400,
+                detail=f"page_limit must not exceed {settings.max_page_limit}",
+            )
         return value
-    return default
+    return None
 
 @router.get("/dashboard-stream", tags=["Dashboard"])
 async def dashboard_streaming():
@@ -76,7 +83,7 @@ async def live_visualization():
 async def evaluate_pdf_stream(
     file_bytes: bytes,
     filename: str,
-    page_limit_int: int,
+    page_limit_int: Optional[int],
 ) -> AsyncGenerator[str, None]:
     """
     Stream evaluation results as Server-Sent Events (SSE).
@@ -149,7 +156,7 @@ async def evaluate_pdf_stream(
 @router.post("/evaluate", tags=["Evaluation"])
 async def evaluate_pdf(
     file: UploadFile = File(..., description="PDF file containing handwritten answers"),
-    page_limit: Optional[str] = Form(None, description="Number of pages to process from start (default: 80)")
+    page_limit: Optional[str] = Form(None, description="Optional cap on pages; omit to process the full PDF"),
 ):
     """
     Evaluate UPSC answer sheet and return complete JSON response.
@@ -240,7 +247,7 @@ async def evaluate_pdf(
 @router.post("/evaluate-stream", tags=["Evaluation"])
 async def evaluate_pdf_streaming(
     file: UploadFile = File(..., description="PDF file containing handwritten answers"),
-    page_limit: Optional[str] = Form(None, description="Number of pages to process from start (default: 80)")
+    page_limit: Optional[str] = Form(None, description="Optional cap on pages; omit to process the full PDF"),
 ):
     """
     Evaluate UPSC answer sheet with real-time streaming responses.

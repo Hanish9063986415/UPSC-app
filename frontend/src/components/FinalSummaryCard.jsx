@@ -1,7 +1,13 @@
 import { computePaperStats } from "../lib/paperAnalytics";
 import ScoreRing from "./charts/ScoreRing";
+import DownloadAnalysisButton from "./DownloadAnalysisButton";
 
-export default function FinalSummaryCard({ summary, questions = [] }) {
+export default function FinalSummaryCard({
+  summary,
+  questions = [],
+  sourceFileName,
+  canDownload = false
+}) {
   if (!summary && !questions.length) return null;
 
   const meta = summary?.complete_package?.metadata || {};
@@ -15,8 +21,17 @@ export default function FinalSummaryCard({ summary, questions = [] }) {
   return (
     <section className="glass-card summary-card">
       <div className="summary-head">
-        <h2>Final summary</h2>
-        {summary && <span className="summary-badge">Evaluation complete</span>}
+        <div className="summary-head-main">
+          <h2>Final summary</h2>
+          {summary && <span className="summary-badge">Evaluation complete</span>}
+        </div>
+        {canDownload && (
+          <DownloadAnalysisButton
+            questions={questions}
+            summary={summary}
+            sourceFileName={sourceFileName}
+          />
+        )}
       </div>
 
       <div className="summary-body">

@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     # API Settings
     max_upload_size: int = 50 * 1024 * 1024
     default_page_limit: int = 80
-    max_page_limit: int = 100
+    max_page_limit: int = 300
 
     # CORS Settings
     cors_credentials: bool = True

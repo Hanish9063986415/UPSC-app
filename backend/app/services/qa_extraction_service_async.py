@@ -40,13 +40,12 @@ class AsyncQAExtractionService:
         pdf_service = get_pdf_service()
         batch_size = settings.pdf_processing_batch_size
         zoom = zoom_factor if zoom_factor is not None else settings.pdf_zoom_factor
-        limit = page_limit if page_limit is not None else settings.default_page_limit
         extract_start = time.time()
 
         page_indices = await asyncio.to_thread(
             pdf_service.resolve_page_indices,
             pdf_bytes,
-            limit,
+            page_limit,
             None,
             None,
         )
