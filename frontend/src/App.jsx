@@ -252,6 +252,12 @@ function Dashboard() {
               ...evalSummary,
               durationSeconds: evalSummary.durationSeconds ?? clientDuration
             });
+            if (payload.persisted !== true) {
+              const saveHint = payload.persist_error
+                ? `Results ready, but not saved to database: ${payload.persist_error}`
+                : "Results ready, but not saved to database (check DATABASE_URL and Supabase tables).";
+              setStatus(saveHint);
+            }
             refreshInstamarkTransactions();
           } else if (type === "error") {
             setStatus(payload.message || "Error");

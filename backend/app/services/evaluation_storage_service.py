@@ -3,11 +3,16 @@ from typing import Any, Optional
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging_config import logger
-from app.db.session import _session_factory, database_enabled
+from app.db import session as db_session
 from app.models.instamark_evaluation import InstamarkEvaluation
+
+
+def _get_session_factory():
+    return db_session._session_factory
 
 
 def _extract_marks(complete_package: dict[str, Any]) -> tuple[float | None, float | None, int | None]:
@@ -63,7 +68,8 @@ async def save_instamark_evaluation(
     rate_per_page: float = 1.0,
 ) -> Optional[str]:
     """Persist a completed evaluation. Returns evaluation UUID string or None if DB disabled."""
-    if not database_enabled() or _session_factory is None:
+    factory = _get_session_factory()
+    if not db_session.database_enabled() or factory is None:
         return None
 
     metadata = complete_package.get("metadata") or {}
@@ -88,17 +94,32 @@ async def save_instamark_evaluation(
         completed_at=now,
     )
 
-    async with _session_factory() as session:
-        session.add(record)
-        await session.commit()
-        await session.refresh(record)
-        logger.info(
-            "Saved Instamark evaluation %s for user=%s file=%s",
-            record.id,
+    try:
+        async with factory() as session:
+            session.add(record)
+            await session.commit()
+            await session.refresh(record)
+    except SQLAlchemyError as exc:
+        logger.error(
+            "Failed to save Instamark evaluation user=%s file=%s pages=%s amount=%s: %s",
             yantra_user_id or "anonymous",
             file_name,
+            page_count,
+            amount_inr,
+            exc,
+            exc_info=True,
         )
-        return str(record.id)
+        raise
+
+    logger.info(
+        "Saved Instamark evaluation %s for user=%s file=%s pages=%s amount_inr=%s",
+        record.id,
+        yantra_user_id or "anonymous",
+        file_name,
+        record.page_count,
+        record.amount_inr,
+    )
+    return str(record.id)
 
 
 async def list_instamark_evaluations(
@@ -106,10 +127,11 @@ async def list_instamark_evaluations(
     *,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
-    if not database_enabled() or _session_factory is None:
+    factory = _get_session_factory()
+    if not db_session.database_enabled() or factory is None:
         return []
 
-    async with _session_factory() as session:
+    async with factory() as session:
         result = await session.execute(
             select(InstamarkEvaluation)
             .where(InstamarkEvaluation.yantra_user_id == yantra_user_id)
@@ -125,7 +147,8 @@ async def get_instamark_evaluation(
     *,
     yantra_user_id: Optional[str] = None,
 ) -> Optional[dict[str, Any]]:
-    if not database_enabled() or _session_factory is None:
+    factory = _get_session_factory()
+    if not db_session.database_enabled() or factory is None:
         return None
 
     try:
@@ -133,7 +156,7 @@ async def get_instamark_evaluation(
     except ValueError:
         return None
 
-    async with _session_factory() as session:
+    async with factory() as session:
         record = await session.get(InstamarkEvaluation, parsed_id)
         if record is None:
             return None

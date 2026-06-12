@@ -134,18 +134,31 @@ async def evaluate_pdf_stream(
                 on_progress=on_progress,
                 on_question_complete=on_question_complete,
             )
-            evaluation_id = await save_instamark_evaluation(
-                complete_package=result["complete_package"],
-                file_name=filename,
-                total_questions=result["total_questions"],
-                total_duration=result["total_duration"],
-                total_tokens=result["total_tokens"],
-                yantra_user_id=yantra_user_id,
-                client_transaction_id=client_transaction_id,
-                page_count=page_count,
-                amount_inr=amount_inr,
-                rate_per_page=settings.instamark_rate_per_page_inr,
-            )
+            evaluation_id = None
+            persist_error = None
+            try:
+                evaluation_id = await save_instamark_evaluation(
+                    complete_package=result["complete_package"],
+                    file_name=filename,
+                    total_questions=result["total_questions"],
+                    total_duration=result["total_duration"],
+                    total_tokens=result["total_tokens"],
+                    yantra_user_id=yantra_user_id,
+                    client_transaction_id=client_transaction_id,
+                    page_count=page_count,
+                    amount_inr=amount_inr,
+                    rate_per_page=settings.instamark_rate_per_page_inr,
+                )
+            except Exception as save_exc:
+                persist_error = str(save_exc)
+                logger.error(
+                    "Evaluation completed but database save failed for user=%s file=%s: %s",
+                    yantra_user_id or "anonymous",
+                    filename,
+                    save_exc,
+                    exc_info=True,
+                )
+
             await event_queue.put(
                 create_sse_event(
                     "final_summary",
@@ -156,6 +169,7 @@ async def evaluate_pdf_stream(
                         "complete_package": result["complete_package"],
                         "evaluation_id": evaluation_id,
                         "persisted": evaluation_id is not None,
+                        "persist_error": persist_error,
                     },
                 )
             )
