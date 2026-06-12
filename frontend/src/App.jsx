@@ -19,7 +19,7 @@ import {
   updateInstamarkTransaction
 } from "./lib/instamarkTransactions";
 import { saveTransactionPdf } from "./lib/instamarkTransactionAssets";
-import { API_BASE_URL, checkApiHealth, formatFetchError, getYantraAuthHeaders } from "./lib/api";
+import { API_BASE_URL, checkApiHealth, formatFetchError, getYantraAuthHeaders, getYantraUserId } from "./lib/api";
 
 function parseSseChunk(chunk) {
   const line = chunk.split("\n").find((l) => l.startsWith("data: "));
@@ -189,6 +189,10 @@ function Dashboard() {
     formData.append("client_transaction_id", transactionId);
     formData.append("page_count", String(pdfMeta.pageCount));
     formData.append("amount_inr", String(pdfMeta.totalPrice));
+    const yantraUserId = getYantraUserId();
+    if (yantraUserId) {
+      formData.append("yantra_user_id", yantraUserId);
+    }
 
     let evaluationSucceeded = false;
 

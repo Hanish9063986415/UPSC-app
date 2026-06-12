@@ -1,11 +1,15 @@
+import { getYantraUserId as resolveYantraUserId } from "./yantraUser";
+
 /** API base URL. Empty string uses same-origin (Vite dev proxy in local dev). */
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 const YANTRA_USER_ID_HEADER =
   import.meta.env.VITE_YANTRA_USER_ID_HEADER || "X-Yantra-User-Id";
 
+export { getYantraUserDisplayName, isYantraUserSignedIn } from "./yantraUser";
+
 export function getYantraUserId() {
-  return (import.meta.env.VITE_YANTRA_USER_ID || "").trim() || null;
+  return resolveYantraUserId();
 }
 
 export function getYantraAuthHeaders(extra = {}) {
