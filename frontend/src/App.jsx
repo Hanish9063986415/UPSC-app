@@ -6,16 +6,20 @@ import FinalSummaryCard from "./components/FinalSummaryCard";
 import QuestionNavigator from "./components/QuestionNavigator";
 import PaperAnalyticsPanel from "./components/PaperAnalyticsPanel";
 import ProgressTimeline from "./components/ProgressTimeline";
+import EvaluationWaitPanel from "./components/EvaluationWaitPanel";
 import WorkspaceNextSteps from "./components/WorkspaceNextSteps";
 import { getQuestionScores } from "./lib/evaluationMetrics";
 import { calculateEvaluationPrice, formatInr, PRICE_PER_PAGE_INR } from "./lib/pdfPricing";
 import {
   addInstamarkTransaction,
+  extractEvaluationSummary,
+  getVisibleInstamarkTransactions,
   loadInstamarkTransactions,
+  removeInstamarkTransaction,
   updateInstamarkTransaction
 } from "./lib/instamarkTransactions";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+import { saveTransactionPdf } from "./lib/instamarkTransactionAssets";
+import { API_BASE_URL, checkApiHealth, formatFetchError, getYantraAuthHeaders } from "./lib/api";
 
 function parseSseChunk(chunk) {
   const line = chunk.split("\n").find((l) => l.startsWith("data: "));
@@ -36,6 +40,7 @@ function Dashboard() {
     error: ""
   });
   const [status, setStatus] = useState("Idle");
+  const [apiOnline, setApiOnline] = useState(null);
   const [progress, setProgress] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -45,9 +50,21 @@ function Dashboard() {
     loadInstamarkTransactions()
   );
   const activeTransactionIdRef = useRef(null);
+  const evaluationStartedAtRef = useRef(null);
 
   const refreshInstamarkTransactions = () => {
     setInstamarkTransactions(loadInstamarkTransactions());
+  };
+
+  const visibleTransactions = useMemo(
+    () => getVisibleInstamarkTransactions(instamarkTransactions),
+    [instamarkTransactions]
+  );
+
+  const discardFailedTransaction = () => {
+    const id = activeTransactionIdRef.current;
+    if (id) removeInstamarkTransaction(id);
+    refreshInstamarkTransactions();
   };
   const canSubmit = useMemo(
     () =>
@@ -55,10 +72,35 @@ function Dashboard() {
       pdfMeta.pageCount > 0 &&
       !pdfMeta.loading &&
       !pdfMeta.error &&
-      !busy,
-    [file, pdfMeta, busy]
+      !busy &&
+      apiOnline !== false,
+    [file, pdfMeta, busy, apiOnline]
   );
   const isComplete = status === "Completed";
+  const statusIsError = status.startsWith("Error:") || apiOnline === false;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const verifyApi = async () => {
+      const online = await checkApiHealth();
+      if (cancelled) return;
+      setApiOnline(online);
+      if (!online && !busy && status === "Idle") {
+        setStatus(formatFetchError(new TypeError("Failed to fetch")));
+      } else if (online && status.startsWith("Cannot reach")) {
+        setStatus("Idle");
+      }
+    };
+
+    verifyApi();
+    const intervalId = window.setInterval(verifyApi, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [busy, status]);
 
   useEffect(() => {
     if (!questions.length) {
@@ -108,8 +150,16 @@ function Dashboard() {
   const handleEvaluate = async (event) => {
     event.preventDefault();
     if (!file) return;
+
+    const online = await checkApiHealth();
+    setApiOnline(online);
+    if (!online) {
+      setStatus(formatFetchError(new TypeError("Failed to fetch")));
+      return;
+    }
+
     setBusy(true);
-    setStatus("Processing...");
+    setStatus("Evaluating…");
     setProgress([]);
     setQuestions([]);
     setSummary(null);
@@ -121,16 +171,31 @@ function Dashboard() {
       amount: pdfMeta.totalPrice
     });
     activeTransactionIdRef.current = transactionId;
+    evaluationStartedAtRef.current = Date.now();
     refreshInstamarkTransactions();
+
+    saveTransactionPdf(transactionId, file)
+      .then(() => {
+        updateInstamarkTransaction(transactionId, { hasPdfCopy: true });
+        refreshInstamarkTransactions();
+      })
+      .catch(() => {
+        updateInstamarkTransaction(transactionId, { hasPdfCopy: false });
+        refreshInstamarkTransactions();
+      });
 
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("client_transaction_id", transactionId);
+    formData.append("page_count", String(pdfMeta.pageCount));
+    formData.append("amount_inr", String(pdfMeta.totalPrice));
 
     let evaluationSucceeded = false;
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/evaluate-stream`, {
         method: "POST",
+        headers: getYantraAuthHeaders(),
         body: formData
       });
 
@@ -155,8 +220,11 @@ function Dashboard() {
           const type = payload.type || "unknown";
 
           if (type === "progress") {
-            setStatus(payload.message || "Processing...");
-            setProgress((prev) => [...prev, payload.message || "Progress update"]);
+            const message = payload.message || "Processing...";
+            setProgress((prev) => {
+              if (prev[prev.length - 1] === message) return prev;
+              return [...prev, message];
+            });
           } else if (type === "question_complete") {
             setQuestions((prev) => [...prev, payload]);
             setActiveQuestionNumber(payload.question_number ?? null);
@@ -167,43 +235,40 @@ function Dashboard() {
             setSummary(payload);
             setStatus("Completed");
             evaluationSucceeded = true;
+            const evalSummary = extractEvaluationSummary(payload);
+            const clientDuration =
+              evaluationStartedAtRef.current != null
+                ? Math.round((Date.now() - evaluationStartedAtRef.current) / 1000)
+                : null;
             updateInstamarkTransaction(activeTransactionIdRef.current, {
               status: "completed",
               completedAt: new Date().toISOString(),
-              questionCount: payload.total_questions ?? null
+              serverEvaluationId: payload.evaluation_id || null,
+              persistedToDatabase: payload.persisted === true,
+              ...evalSummary,
+              durationSeconds: evalSummary.durationSeconds ?? clientDuration
             });
             refreshInstamarkTransactions();
           } else if (type === "error") {
             setStatus(payload.message || "Error");
-            updateInstamarkTransaction(activeTransactionIdRef.current, {
-              status: "failed",
-              completedAt: new Date().toISOString()
-            });
-            refreshInstamarkTransactions();
+            discardFailedTransaction();
           }
         });
       }
     } catch (error) {
-      setStatus(`Error: ${error.message}`);
-      updateInstamarkTransaction(activeTransactionIdRef.current, {
-        status: "failed",
-        completedAt: new Date().toISOString()
-      });
-      refreshInstamarkTransactions();
+      setStatus(`Error: ${formatFetchError(error)}`);
+      discardFailedTransaction();
     } finally {
       if (!evaluationSucceeded && activeTransactionIdRef.current) {
         const current = loadInstamarkTransactions().find(
           (tx) => tx.id === activeTransactionIdRef.current
         );
         if (current?.status === "processing") {
-          updateInstamarkTransaction(activeTransactionIdRef.current, {
-            status: "failed",
-            completedAt: new Date().toISOString()
-          });
-          refreshInstamarkTransactions();
+          discardFailedTransaction();
         }
       }
       activeTransactionIdRef.current = null;
+      evaluationStartedAtRef.current = null;
       setBusy(false);
     }
   };
@@ -218,24 +283,40 @@ function Dashboard() {
     <div className="page dashboard-page">
       <section className="workspace-shell glass-card">
           <form onSubmit={handleEvaluate} className="workspace-upload-panel">
-            <p className="eyebrow">Instamark · Live evaluation</p>
-            <h1 className="workspace-upload-title">Answer evaluation workspace</h1>
-            <p className="muted workspace-upload-hint">Upload your PDF answer sheet to begin</p>
+            <div className="workspace-upload-intro">
+              <p className="eyebrow">Instamark · Live evaluation</p>
+              <h1 className="workspace-upload-title">Answer evaluation workspace</h1>
+              <p className="muted workspace-upload-hint">Upload your PDF answer sheet to begin</p>
+            </div>
 
             <div className="workspace-upload-fields">
               <div className="workspace-field workspace-field-file">
-                <label htmlFor="pdf-upload">Upload PDF</label>
-                <div className="file-input-shell">
-                  <input
-                    id="pdf-upload"
-                    type="file"
-                    accept=".pdf"
-                    onChange={handleFileChange}
-                  />
+                <div className={`file-upload-stack${file ? " has-file" : ""}`}>
+                  <div className={`file-upload-zone${file ? " has-file" : ""}`}>
+                    <input
+                      id="pdf-upload"
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="file-upload-input"
+                      onChange={handleFileChange}
+                    />
+                    <label htmlFor="pdf-upload" className="file-upload-trigger">
+                      <span className="file-upload-copy">
+                        <strong>{file ? "Change PDF file" : "Choose PDF file"}</strong>
+                        <span className="file-upload-hint">
+                          Click to browse your handwritten answer sheet
+                        </span>
+                        <span className="file-upload-meta">PDF only</span>
+                      </span>
+                    </label>
+                  </div>
+                  <span
+                    className={`file-selected-name${file ? " is-selected" : ""}`}
+                    title={file?.name || ""}
+                  >
+                    {fileLabel}
+                  </span>
                 </div>
-                <span className="file-selected-name" title={file?.name || ""}>
-                  {fileLabel}
-                </span>
               </div>
             </div>
 
@@ -310,12 +391,20 @@ function Dashboard() {
         <aside className="glass-card status-card">
           <div className="status-card-head">
             <h2>Live progress</h2>
-            <span className={`status-live-pill${busy ? " active" : ""}`}>
-              {busy ? "Running" : isComplete ? "Done" : "Ready"}
+            <span className={`status-live-pill${busy ? " active" : ""}${apiOnline === false ? " offline" : ""}`}>
+              {busy ? "Running" : isComplete ? "Done" : apiOnline === false ? "Offline" : "Ready"}
             </span>
           </div>
-          <p className={`status-text ${isComplete ? "done" : ""}`}>{status}</p>
-          <ProgressTimeline steps={progress} isComplete={isComplete} />
+          {busy && !isComplete && !statusIsError ? (
+            <EvaluationWaitPanel />
+          ) : (
+            <p className={`status-text${isComplete ? " done" : ""}${statusIsError ? " error" : ""}`}>
+              {status}
+            </p>
+          )}
+          {!busy && progress.length > 0 && (
+            <ProgressTimeline steps={progress} isComplete={isComplete} />
+          )}
           {questions.length > 0 && (
             <div className="status-scoreboard">
               <strong>Scoreboard</strong>
@@ -371,7 +460,7 @@ function Dashboard() {
         canDownload={isComplete && questions.length > 0}
       />
 
-      <WorkspaceNextSteps transactions={instamarkTransactions} />
+      <WorkspaceNextSteps transactions={visibleTransactions} />
 
     </div>
   );

@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "description": "UPSC Answer Evaluation - FastAPI backend + React frontend",
-  "scripts": {
+    "scripts": {
     "start": "python main.py",
+    "dev": "python main.py",
+    "stop": "python run_dev.py --stop",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:api": "python run_dev.py --api-only",
     "build": "npm run build --prefix frontend",
-    "dev": "npm run dev --prefix frontend",
     "preview": "npm run preview --prefix frontend",
     "install:frontend": "npm install --prefix frontend"
   }

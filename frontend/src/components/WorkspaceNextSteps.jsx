@@ -1,11 +1,52 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import InstamarkTransactionsPanel from "./InstamarkTransactionsPanel";
+import { fetchInstamarkEvaluations, mapServerEvaluationToTransaction } from "../lib/api";
 
 const YANTRA_MENTOR_URL =
   import.meta.env.VITE_YANTRA_MENTOR_URL || "https://www.yantraias.com/mentor";
 
+function mergeTransactions(localTransactions, serverTransactions) {
+  const byKey = new Map();
+
+  serverTransactions.forEach((tx) => {
+    byKey.set(tx.serverEvaluationId || tx.id, tx);
+  });
+
+  localTransactions.forEach((tx) => {
+    const key = tx.serverEvaluationId || tx.id;
+    const existing = byKey.get(key);
+    byKey.set(
+      key,
+      existing
+        ? {
+            ...existing,
+            ...tx,
+            hasPdfCopy: tx.hasPdfCopy || existing.hasPdfCopy
+          }
+        : tx
+    );
+  });
+
+  return [...byKey.values()].sort(
+    (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+  );
+}
+
 export default function WorkspaceNextSteps({ transactions = [] }) {
   const [showTransactions, setShowTransactions] = useState(false);
+  const [serverTransactions, setServerTransactions] = useState([]);
+
+  useEffect(() => {
+    if (!showTransactions) return;
+    fetchInstamarkEvaluations()
+      .then((rows) => setServerTransactions(rows.map(mapServerEvaluationToTransaction)))
+      .catch(() => setServerTransactions([]));
+  }, [showTransactions, transactions.length]);
+
+  const mergedTransactions = useMemo(
+    () => mergeTransactions(transactions, serverTransactions),
+    [transactions, serverTransactions]
+  );
 
   return (
     <section className="glass-card workspace-next-steps" aria-label="YantraIAS next steps">
@@ -32,7 +73,9 @@ export default function WorkspaceNextSteps({ transactions = [] }) {
           </span>
         </button>
 
-        {showTransactions && <InstamarkTransactionsPanel transactions={transactions} />}
+        {showTransactions && (
+          <InstamarkTransactionsPanel transactions={mergedTransactions} />
+        )}
 
         <a
           className="workspace-next-step-btn workspace-next-step-btn--primary"

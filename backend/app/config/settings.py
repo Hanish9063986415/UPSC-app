@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_file: str = "execution.log"
 
+    # YantraIAS database (shared PostgreSQL)
+    database_url: Optional[str] = Field(default=None, validation_alias="DATABASE_URL")
+    database_echo: bool = Field(default=False, validation_alias="DATABASE_ECHO")
+    database_auto_init: bool = Field(default=False, validation_alias="DATABASE_AUTO_INIT")
+    yantra_user_id_header: str = Field(
+        default="X-Yantra-User-Id", validation_alias="YANTRA_USER_ID_HEADER"
+    )
+    instamark_rate_per_page_inr: float = Field(default=1.0, validation_alias="INSTAMARK_RATE_PER_PAGE_INR")
+
     # Processing Configuration
     image_max_pixels: Optional[int] = 178_956_970
     pdf_zoom_factor: int = 2

@@ -14,3 +14,7 @@ Pillow
 
 # Utilities
 python-dotenv==1.0.1
+
+# YantraIAS database (optional — set DATABASE_URL to enable persistence)
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0

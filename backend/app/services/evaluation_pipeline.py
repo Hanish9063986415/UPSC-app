@@ -43,16 +43,21 @@ class EvaluationPipeline:
             if on_progress:
                 await on_progress(message, extra)
 
+        async def report_batch_progress(message: str, extra: Dict[str, Any]) -> None:
+            await progress(message, **extra)
+
         await progress(
             "Extracting pages in parallel (fast batch mode)...",
             step=1,
             total_steps=4,
+            phase="extraction",
         )
 
         extract_start = time.time()
         qa_pairs = await self.qa_service.extract_qa_from_pdf_async(
             pdf_bytes=pdf_bytes,
             page_limit=page_limit,
+            on_progress=report_batch_progress,
         )
         extract_duration = time.time() - extract_start
         release_memory(pdf_bytes)
@@ -65,6 +70,7 @@ class EvaluationPipeline:
             f"Found {total_questions} questions in {extract_duration:.0f}s",
             step=2,
             total_steps=4,
+            phase="evaluation",
             total_questions=total_questions,
         )
 
@@ -73,6 +79,7 @@ class EvaluationPipeline:
             f"(up to {self.settings.max_concurrent_evals} at once)...",
             step=3,
             total_steps=4,
+            phase="evaluation",
         )
 
         eval_start = time.time()
@@ -82,7 +89,7 @@ class EvaluationPipeline:
         )
         eval_duration = time.time() - eval_start
 
-        await progress("Building final summary...", step=4, total_steps=4)
+        await progress("Building final summary...", step=4, total_steps=4, phase="summary")
 
         total_duration = time.time() - overall_start
         complete_package = self.export_service.create_complete_package(

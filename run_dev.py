@@ -229,26 +229,37 @@ def process_name(pid: int) -> str:
 
 
 def is_stale_dev_process(command_line: str, pid: int, port: int) -> bool:
+    """Return True only for known dev-server processes, never the current runner."""
+    if pid <= 0 or pid == os.getpid():
+        return False
+
     state = load_dev_state()
     saved_pids = {state.get("backend_pid"), state.get("frontend_pid")}
     if pid in saved_pids:
         return True
 
-    if command_line:
-        cmd = command_line.lower()
-        root = str(ROOT).lower()
+    cmd = (command_line or "").lower()
+    root = str(ROOT).lower()
+    backend = str(BACKEND_DIR).lower()
+    frontend = str(FRONTEND_DIR).lower()
+
+    if port == BACKEND_PORT_DEFAULT:
         if "uvicorn" in cmd and "app.main" in cmd:
             return True
-        if "vite" in cmd and (str(FRONTEND_DIR).lower() in cmd or "upsc-frontend" in cmd):
+        if backend in cmd and "uvicorn" in cmd:
             return True
-        if "run_dev.py" in cmd and root in cmd:
-            return True
+        return False
 
-    name = process_name(pid).lower()
-    if port == BACKEND_PORT_DEFAULT and name in {"python", "python.exe", "python3"}:
+    if port == FRONTEND_PORT_DEFAULT:
+        if "vite" in cmd and (frontend in cmd or "upsc-frontend" in cmd):
+            return True
+        if frontend in cmd and ("vite" in cmd or "npm" in cmd):
+            return True
+        return False
+
+    if "run_dev.py" in cmd and root in cmd:
         return True
-    if port == FRONTEND_PORT_DEFAULT and name in {"node", "node.exe"}:
-        return True
+
     return False
 
 
@@ -351,7 +362,7 @@ def find_stale_dev_pids() -> list[int]:
     for item in processes:
         pid = item.get("ProcessId")
         cmd = item.get("CommandLine") or ""
-        if not isinstance(pid, int):
+        if not isinstance(pid, int) or pid == os.getpid():
             continue
         if is_stale_dev_process(cmd, pid, BACKEND_PORT_DEFAULT) or is_stale_dev_process(
             cmd, pid, FRONTEND_PORT_DEFAULT
@@ -360,17 +371,55 @@ def find_stale_dev_pids() -> list[int]:
     return stale
 
 
+def wait_for_port_free(port: int, timeout: float = 12.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not is_port_in_use(port):
+            return True
+        time.sleep(0.35)
+    return not is_port_in_use(port)
+
+
 def free_stale_dev_port(port: int, label: str) -> bool:
-    stopped = False
-    candidates = list(dict.fromkeys(pids_listening_on_port(port) + find_stale_dev_pids()))
-    for pid in candidates:
-        cmd = process_command_line(pid)
-        if is_stale_dev_process(cmd, pid, port):
-            print(f"[runner] Stopping previous {label} on port {port} (PID {pid})...", flush=True)
-            kill_process_tree(pid)
-            stopped = True
-    if stopped:
-        time.sleep(1.5)
+    """Stop dev processes bound to `port` and wait until the port is free."""
+    for attempt in range(1, 6):
+        listener_pids = pids_listening_on_port(port)
+        if not listener_pids:
+            return True
+
+        stopped_any = False
+        blocked = False
+
+        for pid in listener_pids:
+            if pid == os.getpid():
+                continue
+            cmd = process_command_line(pid)
+            if is_stale_dev_process(cmd, pid, port):
+                print(
+                    f"[runner] Stopping previous {label} on port {port} (PID {pid})...",
+                    flush=True,
+                )
+                kill_process_tree(pid)
+                stopped_any = True
+            else:
+                blocked = True
+
+        if blocked:
+            return False
+
+        if stopped_any and wait_for_port_free(port):
+            return True
+
+        if not is_port_in_use(port):
+            return True
+
+        if attempt < 5:
+            print(
+                f"[runner] Waiting for port {port} to become free (attempt {attempt}/5)...",
+                flush=True,
+            )
+            time.sleep(0.75)
+
     return not is_port_in_use(port)
 
 
@@ -385,17 +434,23 @@ def ensure_dev_ports_available(backend_port: int, frontend_port: int, api_only: 
         if not is_port_in_use(port):
             continue
         if free_stale_dev_port(port, label):
+            print(f"[runner] Port {port} is ready for {label}.", flush=True)
             continue
         pid_list = pids_listening_on_port(port)
         pid_hint = f" (PID {pid_list[0]})" if pid_list else ""
         print(
-            f"[error] Port {port} is already in use{pid_hint} by another application.",
+            f"[error] Port {port} is still in use{pid_hint} by another application.",
             flush=True,
         )
-        if os.name == "nt":
-            print(f"        Free it with: taskkill /F /PID {pid_list[0]} /T", flush=True)
-        else:
-            print(f"        Free it with: kill -9 {pid_list[0]}", flush=True)
+        if pid_list:
+            if os.name == "nt":
+                print(f"        Free it with: taskkill /F /PID {pid_list[0]} /T", flush=True)
+            else:
+                print(f"        Free it with: kill -9 {pid_list[0]}", flush=True)
+        print(
+            f"        Then run: npm start",
+            flush=True,
+        )
         return False
     return True
 
@@ -462,14 +517,39 @@ def run_api_only(port: int, python: Path) -> int:
     )
 
 
+def stop_dev_servers() -> int:
+    """Stop saved and stale dev-server processes."""
+    print("[runner] Stopping development servers...", flush=True)
+    stop_saved_dev_servers()
+    stopped = 0
+    for port, label in ((BACKEND_PORT_DEFAULT, "backend"), (FRONTEND_PORT_DEFAULT, "frontend")):
+        for pid in pids_listening_on_port(port):
+            if pid == os.getpid():
+                continue
+            cmd = process_command_line(pid)
+            if is_stale_dev_process(cmd, pid, port):
+                print(f"[runner] Stopping {label} on port {port} (PID {pid})...", flush=True)
+                kill_process_tree(pid)
+                stopped += 1
+    clear_dev_state()
+    wait_for_port_free(BACKEND_PORT_DEFAULT, timeout=6.0)
+    wait_for_port_free(FRONTEND_PORT_DEFAULT, timeout=6.0)
+    print("[runner] Development servers stopped.", flush=True)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run the UPSC app (FastAPI backend + React frontend)."
     )
     parser.add_argument("--api-only", action="store_true", help="Start FastAPI backend only")
+    parser.add_argument("--stop", action="store_true", help="Stop running dev servers")
     parser.add_argument("--backend-port", type=int, default=BACKEND_PORT_DEFAULT)
     parser.add_argument("--frontend-port", type=int, default=FRONTEND_PORT_DEFAULT)
     args = parser.parse_args()
+
+    if args.stop:
+        return stop_dev_servers()
 
     if not BACKEND_DIR.exists():
         print("[error] backend/ directory not found.", flush=True)

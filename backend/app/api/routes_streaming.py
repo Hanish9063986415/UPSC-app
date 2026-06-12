@@ -6,13 +6,14 @@ import asyncio
 import time
 from typing import AsyncGenerator, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 
 from app.config.settings import get_settings
 from app.core.logging_config import logger
 from app.core.memory_guard import get_evaluation_memory_guard
 from app.services.evaluation_pipeline import get_evaluation_pipeline
+from app.services.evaluation_storage_service import save_instamark_evaluation
 from app.utils.json_utils import create_sse_event
 
 router = APIRouter()
@@ -52,12 +53,17 @@ async def health_check():
     - Status of the API and its services
     """
     settings = get_settings()
-    
+    from app.db.session import database_enabled
+
     return {
         "status": "healthy",
         "app": settings.app_name,
         "version": settings.app_version,
         "environment": settings.environment,
+        "persistence": {
+            "database_enabled": database_enabled(),
+            "yantra_user_id_header": settings.yantra_user_id_header,
+        },
         "performance": {
             "target_eval_duration_seconds": settings.target_eval_duration_seconds,
             "gemini_api_keys_configured": len(
@@ -84,6 +90,11 @@ async def evaluate_pdf_stream(
     file_bytes: bytes,
     filename: str,
     page_limit_int: Optional[int],
+    *,
+    yantra_user_id: Optional[str] = None,
+    client_transaction_id: Optional[str] = None,
+    page_count: Optional[int] = None,
+    amount_inr: Optional[float] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream evaluation results as Server-Sent Events (SSE).
@@ -91,6 +102,7 @@ async def evaluate_pdf_stream(
     """
     event_queue: asyncio.Queue = asyncio.Queue()
     pipeline = get_evaluation_pipeline()
+    settings = get_settings()
 
     async def on_progress(message: str, extra: dict) -> None:
         await event_queue.put(
@@ -122,6 +134,18 @@ async def evaluate_pdf_stream(
                 on_progress=on_progress,
                 on_question_complete=on_question_complete,
             )
+            evaluation_id = await save_instamark_evaluation(
+                complete_package=result["complete_package"],
+                file_name=filename,
+                total_questions=result["total_questions"],
+                total_duration=result["total_duration"],
+                total_tokens=result["total_tokens"],
+                yantra_user_id=yantra_user_id,
+                client_transaction_id=client_transaction_id,
+                page_count=page_count,
+                amount_inr=amount_inr,
+                rate_per_page=settings.instamark_rate_per_page_inr,
+            )
             await event_queue.put(
                 create_sse_event(
                     "final_summary",
@@ -130,6 +154,8 @@ async def evaluate_pdf_stream(
                         "total_duration": result["total_duration"],
                         "total_tokens": result["total_tokens"],
                         "complete_package": result["complete_package"],
+                        "evaluation_id": evaluation_id,
+                        "persisted": evaluation_id is not None,
                     },
                 )
             )
@@ -248,6 +274,11 @@ async def evaluate_pdf(
 async def evaluate_pdf_streaming(
     file: UploadFile = File(..., description="PDF file containing handwritten answers"),
     page_limit: Optional[str] = Form(None, description="Optional cap on pages; omit to process the full PDF"),
+    client_transaction_id: Optional[str] = Form(None, description="Client-side Instamark transaction id"),
+    page_count: Optional[str] = Form(None, description="Billable page count from client PDF scan"),
+    amount_inr: Optional[str] = Form(None, description="Billable amount in INR"),
+    yantra_user_id: Optional[str] = Form(None, description="YantraIAS user id"),
+    x_yantra_user_id: Optional[str] = Header(None, alias="X-Yantra-User-Id"),
 ):
     """
     Evaluate UPSC answer sheet with real-time streaming responses.
@@ -335,15 +366,28 @@ async def evaluate_pdf_streaming(
             detail=f"File size exceeds maximum allowed size of {settings.max_upload_size / (1024 * 1024):.0f}MB",
         )
 
+    resolved_user_id = (yantra_user_id or x_yantra_user_id or "").strip() or None
+
     logger.info(
         f"Starting streaming evaluation: {file.filename} "
-        f"({len(contents)} bytes, page_limit={page_limit_int})"
+        f"({len(contents)} bytes, page_limit={page_limit_int}, user={resolved_user_id or 'anonymous'})"
     )
+
+    page_count_int = int(page_count) if page_count and page_count.strip().isdigit() else None
+    amount_value = float(amount_inr) if amount_inr and amount_inr.strip() else None
 
     async def guarded_stream():
         try:
             async with get_evaluation_memory_guard():
-                async for event in evaluate_pdf_stream(contents, file.filename, page_limit_int):
+                async for event in evaluate_pdf_stream(
+                    contents,
+                    file.filename,
+                    page_limit_int,
+                    yantra_user_id=resolved_user_id,
+                    client_transaction_id=client_transaction_id,
+                    page_count=page_count_int,
+                    amount_inr=amount_value,
+                ):
                     yield event
         except HTTPException as e:
             yield create_sse_event("error", {"message": e.detail})

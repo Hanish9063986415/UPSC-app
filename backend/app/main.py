@@ -8,9 +8,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
+from app.api.routes_instamark import router as instamark_router
 from app.api.routes_streaming import health_check, router as streaming_router
 from app.config.settings import get_settings
 from app.core.logging_config import logger, setup_logging
+from app.db.session import close_database, init_database
 from app.services.gemini_service_async import get_async_gemini_service
 from app.middleware.rate_limit import RateLimitMiddleware
 
@@ -27,7 +29,11 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize Gemini service: {e}")
         raise
 
+    await init_database()
+
     yield
+
+    await close_database()
 
     logger.info("Shutting down UPSC Answer Evaluation API")
 
@@ -52,6 +58,8 @@ def create_app() -> FastAPI:
         - `POST /api/evaluate-stream` - Evaluate PDF (streaming SSE)
         - `GET /api/live-visualization` - Real-time dashboard
         - `POST /api/export-evaluation` - Export evaluation data
+        - `GET /api/instamark/evaluations` - List saved evaluations (YantraIAS user)
+        - `GET /api/instamark/evaluations/{id}` - Full analysis JSON for one evaluation
         """,
         docs_url="/docs",
         redoc_url="/redoc",
@@ -77,6 +85,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(streaming_router, prefix="/api")
+    app.include_router(instamark_router, prefix="/api")
     app.add_api_route("/health", health_check, methods=["GET"], tags=["Health"])
 
     @app.get("/", include_in_schema=False)

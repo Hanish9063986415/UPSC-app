@@ -5,7 +5,7 @@ Async Q&A Extraction Service - Parallel batch extraction for high performance.
 import re
 import json
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Awaitable, Callable
 from PIL import Image
 import io
 import asyncio
@@ -16,6 +16,9 @@ from app.services.gemini_service_async import get_async_gemini_service
 from app.services.pdf_service import get_pdf_service
 from app.utils.text_utils import sanitize_text_for_prompt, parse_ai_json_response
 from app.config.settings import get_settings
+
+
+ProgressCallback = Callable[[str, Dict[str, Any]], Awaitable[None]]
 
 
 class AsyncQAExtractionService:
@@ -31,6 +34,7 @@ class AsyncQAExtractionService:
         pdf_bytes: bytes,
         page_limit: Optional[int] = None,
         zoom_factor: Optional[int] = None,
+        on_progress: Optional[ProgressCallback] = None,
     ) -> List[Dict[str, Any]]:
         """
         Fast path: parallel-render pages in batches, then parallel Gemini OCR per batch.
@@ -66,7 +70,24 @@ class AsyncQAExtractionService:
 
         for batch_num, batch_start in enumerate(range(0, total_pages, batch_size), 1):
             batch_indices = page_indices[batch_start : batch_start + batch_size]
+            page_start = batch_indices[0] + 1
+            page_end = batch_indices[-1] + 1
             batch_t0 = time.time()
+
+            if on_progress:
+                await on_progress(
+                    f"Processing pages {page_start} to {page_end}",
+                    {
+                        "phase": "extraction",
+                        "batch_num": batch_num,
+                        "total_batches": num_batches,
+                        "page_start": page_start,
+                        "page_end": page_end,
+                        "total_pages": total_pages,
+                        "step": 1,
+                        "total_steps": 4,
+                    },
+                )
 
             rendered = await pdf_service.render_pages_parallel_async(
                 pdf_bytes=pdf_bytes,
