@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { getQuestionScores, getScoreBand } from "../lib/evaluationMetrics";
 import ParameterAccordion from "./ParameterAccordion";
 import QuestionAnalyticsOverview from "./QuestionAnalyticsOverview";
 import VerbatimText from "./VerbatimText";
 
 const EXTRACTED_ANSWER_PREVIEW_LINES = 4;
+const MODEL_ANSWER_PREVIEW_LINES = 1;
 
 function answerNeedsPreviewToggle(text) {
   if (!text) return false;
@@ -44,20 +45,46 @@ function ExtractedAnswerSection({ text }) {
   );
 }
 
-export default function QuestionResultCard({ item, isActive, onActivate }) {
-  const cardRef = useRef(null);
-  const [expandAllParams, setExpandAllParams] = useState(false);
+function modelAnswerNeedsToggle(text) {
+  if (!text) return false;
+  const lines = text.split(/\r?\n/);
+  return lines.length > MODEL_ANSWER_PREVIEW_LINES || text.length > 100;
+}
 
-  useEffect(() => {
-    if (isActive && cardRef.current) {
-      cardRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [isActive]);
+function ModelAnswerSection({ text }) {
+  const [expanded, setExpanded] = useState(false);
+  const canToggle = modelAnswerNeedsToggle(text);
+
+  return (
+    <section className="sub-card model model-answer-section">
+      <div className="model-answer-head">
+        <h4>Model answer</h4>
+        {canToggle && (
+          <button
+            type="button"
+            className="model-answer-view-complete"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+          >
+            {expanded ? "Show less" : "View complete answer"}
+          </button>
+        )}
+      </div>
+      <div
+        className={`model-answer-body${canToggle && !expanded ? " is-collapsed" : " is-expanded"}`}
+      >
+        <VerbatimText text={text} as="div" className="model-text verbatim-text model-answer-text" />
+      </div>
+    </section>
+  );
+}
+
+export default function QuestionResultCard({ item, isActive, onActivate }) {
+  const [expandAllParams, setExpandAllParams] = useState(false);
 
   if (item.error) {
     return (
       <article
-        ref={cardRef}
         id={`question-${item.question_number}`}
         className={`question surface-light error${isActive ? " active" : ""}`}
         onMouseEnter={() => onActivate?.(item.question_number)}
@@ -82,33 +109,43 @@ export default function QuestionResultCard({ item, isActive, onActivate }) {
 
   return (
     <article
-      ref={cardRef}
       id={`question-${item.question_number}`}
       className={`question surface-light band-${band}${isActive ? " active" : ""}`}
       onMouseEnter={() => onActivate?.(item.question_number)}
     >
-      <div className="question-head">
-        <h3>Question {item.question_number}</h3>
-        <div className={`score-pill band-${band}`}>
-          {scores.awarded} / {scores.possible} <span>({scores.percent}%)</span>
-        </div>
-      </div>
+      <h3>Question {item.question_number}</h3>
+
+      <section className="question-prompt" aria-label="Question text">
+        <p className="question-text">{item.question}</p>
+      </section>
 
       <section className="sub-card overview-analytics-card">
         <h4>Question analytics</h4>
         <QuestionAnalyticsOverview item={item} />
       </section>
 
-      <p className="question-text">{item.question}</p>
-
       {analysis.upsc_expectations?.length > 0 && (
-        <section className="sub-card">
-          <h4>UPSC expectations</h4>
-          <ul>
+        <section className="sub-card upsc-expectations-card">
+          <div className="upsc-expectations-head">
+            <div className="upsc-expectations-head-main">
+              <span className="upsc-expectations-eyebrow">Examiner lens</span>
+              <h4>UPSC expectations</h4>
+            </div>
+            <span className="upsc-expectations-count">
+              {analysis.upsc_expectations.length}{" "}
+              {analysis.upsc_expectations.length === 1 ? "point" : "points"}
+            </span>
+          </div>
+          <ol className="upsc-expectations-list">
             {analysis.upsc_expectations.map((e, i) => (
-              <li key={i}>{e}</li>
+              <li key={i} className="upsc-expectation-item">
+                <span className="upsc-expectation-index" aria-hidden="true">
+                  {i + 1}
+                </span>
+                <span className="upsc-expectation-text">{e}</span>
+              </li>
             ))}
-          </ul>
+          </ol>
         </section>
       )}
 
@@ -159,12 +196,7 @@ export default function QuestionResultCard({ item, isActive, onActivate }) {
         </section>
       )}
 
-      {modelText !== "" && (
-        <section className="sub-card model">
-          <h4>Model answer</h4>
-          <VerbatimText text={modelText} as="pre" className="model-text verbatim-text" />
-        </section>
-      )}
+      {modelText !== "" && <ModelAnswerSection text={modelText} />}
     </article>
   );
 }

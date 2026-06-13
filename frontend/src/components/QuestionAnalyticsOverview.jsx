@@ -1,25 +1,15 @@
-import { getQuestionScores, getScoreBand, getRadarData } from "../lib/evaluationMetrics";
+import { getQuestionScores, getScoreBand } from "../lib/evaluationMetrics";
 import { getExpectationsStats } from "../lib/paperAnalytics";
 import ScoreRing from "./charts/ScoreRing";
-import QuestionParameterMarksPanel from "./charts/QuestionParameterMarksPanel";
 
 export default function QuestionAnalyticsOverview({ item }) {
   const scores = getQuestionScores(item);
   const band = getScoreBand(scores.percent);
-  const radarData = getRadarData(item);
   const stats = getExpectationsStats(item);
 
   const isZeroScore = scores.percent === 0;
   const isCompact = isZeroScore;
   const ringSize = isCompact ? 84 : 120;
-
-  const paramBars = radarData.map((r) => ({
-    label: r.name,
-    value: r.awarded,
-    max: r.possible,
-    percent: r.percent,
-    band: getScoreBand(r.percent)
-  }));
 
   return (
     <div className={`question-analytics-grid${isCompact ? " is-compact" : ""}`}>
@@ -29,7 +19,7 @@ export default function QuestionAnalyticsOverview({ item }) {
           band={band}
           size={ringSize}
           compact={isCompact}
-          label={`Q${scores.questionNumber}`}
+          emphasis="marks"
           sublabel={`${scores.awarded}/${scores.possible}`}
         />
         {isZeroScore && (
@@ -54,11 +44,6 @@ export default function QuestionAnalyticsOverview({ item }) {
           <span className="mini-stat-value">{stats.gapCount}</span>
           <span className="mini-stat-label">Gaps</span>
         </div>
-      </div>
-
-      <div className={`question-analytics-bars${isCompact ? " bars-compact" : ""}`}>
-        <h4>Parameter marks</h4>
-        <QuestionParameterMarksPanel data={paramBars} />
       </div>
     </div>
   );

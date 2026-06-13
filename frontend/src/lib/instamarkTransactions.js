@@ -1,7 +1,19 @@
 import { PRICE_PER_PAGE_INR } from "./pdfPricing";
+import { getYantraUserId } from "./yantraUser";
 
 export const INSTAMARK_SERVICE = "instamark";
 const STORAGE_KEY = "instamark-transactions-v2";
+
+export function transactionBelongsToUser(tx, userId = getYantraUserId()) {
+  if (!tx) return false;
+  const ownerId = tx.yantraUserId ?? null;
+  if (!userId) return ownerId == null;
+  return ownerId === userId;
+}
+
+export function filterTransactionsByUser(transactions, userId = getYantraUserId()) {
+  return (transactions ?? []).filter((tx) => transactionBelongsToUser(tx, userId));
+}
 
 function readAll() {
   try {
@@ -19,9 +31,13 @@ function writeAll(items) {
 }
 
 export function loadInstamarkTransactions() {
-  return readAll()
-    .filter((item) => item?.service === INSTAMARK_SERVICE)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const userId = getYantraUserId();
+  return filterTransactionsByUser(
+    readAll()
+      .filter((item) => item?.service === INSTAMARK_SERVICE)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    userId
+  );
 }
 
 export function getInstamarkSerialMap(transactions) {
@@ -31,10 +47,11 @@ export function getInstamarkSerialMap(transactions) {
   return new Map(chronological.map((tx, index) => [tx.id, index + 1]));
 }
 
-export function addInstamarkTransaction({ fileName, pageCount, amount }) {
+export function addInstamarkTransaction({ fileName, pageCount, amount, yantraUserId = getYantraUserId() }) {
   const entry = {
     id: crypto.randomUUID(),
     service: INSTAMARK_SERVICE,
+    yantraUserId: yantraUserId || null,
     fileName: fileName || "Answer sheet.pdf",
     pageCount: Number(pageCount) || 0,
     amount: Number(amount) || 0,
@@ -47,7 +64,8 @@ export function addInstamarkTransaction({ fileName, pageCount, amount }) {
     marksAwarded: null,
     marksPossible: null,
     marksPercent: null,
-    hasPdfCopy: false
+    hasPdfCopy: false,
+    hasAnalysisReport: false
   };
 
   const items = readAll();
@@ -72,7 +90,8 @@ export function removeInstamarkTransaction(id) {
 }
 
 export function getVisibleInstamarkTransactions(transactions) {
-  const list = transactions ?? loadInstamarkTransactions();
+  const userId = getYantraUserId();
+  const list = filterTransactionsByUser(transactions ?? loadInstamarkTransactions(), userId);
   return list.filter((tx) => tx.status === "completed");
 }
 

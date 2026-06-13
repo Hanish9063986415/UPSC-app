@@ -70,6 +70,12 @@ export function compareQuestionNumbers(a, b) {
   return sa.localeCompare(sb, undefined, { numeric: true, sensitivity: "base" });
 }
 
+export function sortQuestionsByNumber(questions) {
+  return [...questions].sort((a, b) =>
+    compareQuestionNumbers(a.question_number, b.question_number)
+  );
+}
+
 export function getQuestionBarChartData(questions) {
   return questions
     .map((q) => {
@@ -207,6 +213,21 @@ export function collectKeywordFrequency(questions) {
       keywords.forEach((text) => items.push({ text, questionNumber: q.question_number }));
     });
   return countByLabel(items, (i) => i.text);
+}
+
+export function collectKeywordsByQuestion(questions) {
+  return questions
+    .filter((q) => !q.error)
+    .map((q) => {
+      const keywords = (q.evaluation?.overall_upsc_assessment?.keywords_for_success || []).filter(Boolean);
+      const uniqueKeywords = [...new Set(keywords)];
+
+      return {
+        questionNumber: q.question_number,
+        keywords: uniqueKeywords.sort((a, b) => a.localeCompare(b)),
+        count: uniqueKeywords.length
+      };
+    });
 }
 
 export function getExpectationsStats(item) {

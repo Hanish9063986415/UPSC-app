@@ -90,6 +90,8 @@ export function mapServerEvaluationToTransaction(record) {
     marksPossible: record.marks_possible,
     marksPercent: record.marks_percent,
     hasPdfCopy: false,
-    syncedFromServer: true
+    hasAnalysisReport: Boolean(record.complete_package),
+    syncedFromServer: true,
+    yantraUserId: record.yantra_user_id || null
   };
 }

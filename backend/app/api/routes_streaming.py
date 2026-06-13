@@ -185,12 +185,28 @@ async def evaluate_pdf_stream(
             await event_queue.put(None)
 
     task = asyncio.create_task(run_pipeline())
-    while True:
-        event = await event_queue.get()
-        if event is None:
-            break
-        yield event
-    await task
+    try:
+        while True:
+            event = await event_queue.get()
+            if event is None:
+                break
+            try:
+                yield event
+            except (asyncio.CancelledError, GeneratorExit):
+                logger.info(
+                    "Client disconnected — evaluation continues server-side: %s",
+                    filename,
+                )
+                break
+    finally:
+        if task.done():
+            await task
+        else:
+            logger.info(
+                "Evaluation still running in background after disconnect: %s (user=%s)",
+                filename,
+                yantra_user_id or "anonymous",
+            )
 
 
 @router.post("/evaluate", tags=["Evaluation"])

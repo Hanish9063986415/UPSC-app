@@ -3,8 +3,6 @@ import autoTable from "jspdf-autotable";
 import {
   computePaperStats,
   getQuestionBarChartData,
-  collectGapFrequency,
-  collectStrengthFrequency,
   collectKeywordFrequency,
   compareQuestionNumbers
 } from "./paperAnalytics";
@@ -269,18 +267,8 @@ export function buildAnalysisPdf({ questions, summary, sourceFileName }) {
   doc.text(`Generated: ${generatedAt}`, MARGIN, w.y());
   w.setY(w.y() + 10);
 
-  w.sectionTitle("Paper overview");
-  w.paragraph(
-    `Overall score: ${obtained} / ${maxMarks} marks (${percent}%). ` +
-      `Questions evaluated: ${stats.evaluatedCount}${stats.errorCount ? ` (${stats.errorCount} errors)` : ""}. ` +
-      `Strengths noted: ${stats.totalStrengths}. Gaps flagged: ${stats.totalGaps}.`
-  );
-  if (summary?.total_duration ?? meta.total_duration_seconds) {
-    w.paragraph(`Evaluation duration: ${summary?.total_duration ?? meta.total_duration_seconds}s`);
-  }
-  w.spacer(4);
-
   const barData = getQuestionBarChartData(questions);
+  w.sectionTitle("Questions overview");
   autoTable(doc, {
     startY: w.y(),
     margin: { left: MARGIN, right: MARGIN },
@@ -294,10 +282,22 @@ export function buildAnalysisPdf({ questions, summary, sourceFileName }) {
     headStyles: { fillColor: NAVY, textColor: 255 },
     alternateRowStyles: { fillColor: [248, 250, 252] }
   });
-  w.setY(doc.lastAutoTable.finalY + 8);
+  w.setY(doc.lastAutoTable.finalY + 10);
 
-  addFrequencyList(w, "Most common gaps", collectGapFrequency(questions));
-  addFrequencyList(w, "Most common strengths", collectStrengthFrequency(questions));
+  w.sectionTitle("Final summary");
+  w.paragraph(
+    `Overall score: ${obtained} / ${maxMarks} marks (${percent}%). ` +
+      `Questions evaluated: ${stats.evaluatedCount}${stats.errorCount ? ` (${stats.errorCount} errors)` : ""}. ` +
+      `Strengths noted: ${stats.totalStrengths}. Gaps flagged: ${stats.totalGaps}.`
+  );
+  if (summary?.total_duration ?? meta.total_duration_seconds) {
+    w.paragraph(`Evaluation duration: ${summary?.total_duration ?? meta.total_duration_seconds}s`);
+  }
+  if (summary?.total_tokens ?? meta.total_tokens) {
+    w.paragraph(`AI tokens used: ${summary?.total_tokens ?? meta.total_tokens}`);
+  }
+  w.spacer(4);
+
   addFrequencyList(w, "Keywords for success (frequency)", collectKeywordFrequency(questions));
 
   w.newPage();

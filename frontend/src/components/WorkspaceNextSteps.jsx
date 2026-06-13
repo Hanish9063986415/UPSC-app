@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import InstamarkTransactionsPanel from "./InstamarkTransactionsPanel";
 import { fetchInstamarkEvaluations, mapServerEvaluationToTransaction } from "../lib/api";
+import { filterTransactionsByUser } from "../lib/instamarkTransactions";
+import { useYantraUser } from "../hooks/useYantraUser";
 
 const YANTRA_MENTOR_URL =
   import.meta.env.VITE_YANTRA_MENTOR_URL || "https://www.yantraias.com/mentor";
 
-function mergeTransactions(localTransactions, serverTransactions) {
+function mergeTransactions(localTransactions, serverTransactions, userId) {
   const byKey = new Map();
 
-  serverTransactions.forEach((tx) => {
+  filterTransactionsByUser(serverTransactions, userId).forEach((tx) => {
     byKey.set(tx.serverEvaluationId || tx.id, tx);
   });
 
-  localTransactions.forEach((tx) => {
+  filterTransactionsByUser(localTransactions, userId).forEach((tx) => {
     const key = tx.serverEvaluationId || tx.id;
     const existing = byKey.get(key);
     byKey.set(
@@ -21,6 +23,8 @@ function mergeTransactions(localTransactions, serverTransactions) {
         ? {
             ...existing,
             ...tx,
+            yantraUserId: tx.yantraUserId ?? existing.yantraUserId ?? userId ?? null,
+            hasAnalysisReport: tx.hasAnalysisReport || existing.hasAnalysisReport,
             hasPdfCopy: tx.hasPdfCopy || existing.hasPdfCopy
           }
         : tx
@@ -33,19 +37,23 @@ function mergeTransactions(localTransactions, serverTransactions) {
 }
 
 export default function WorkspaceNextSteps({ transactions = [] }) {
+  const { userId, isSignedIn, displayName } = useYantraUser();
   const [showTransactions, setShowTransactions] = useState(false);
   const [serverTransactions, setServerTransactions] = useState([]);
 
   useEffect(() => {
-    if (!showTransactions) return;
+    if (!showTransactions || !userId) {
+      setServerTransactions([]);
+      return;
+    }
     fetchInstamarkEvaluations()
       .then((rows) => setServerTransactions(rows.map(mapServerEvaluationToTransaction)))
       .catch(() => setServerTransactions([]));
-  }, [showTransactions, transactions.length]);
+  }, [showTransactions, transactions.length, userId]);
 
   const mergedTransactions = useMemo(
-    () => mergeTransactions(transactions, serverTransactions),
-    [transactions, serverTransactions]
+    () => mergeTransactions(transactions, serverTransactions, userId),
+    [transactions, serverTransactions, userId]
   );
 
   return (
@@ -74,7 +82,12 @@ export default function WorkspaceNextSteps({ transactions = [] }) {
         </button>
 
         {showTransactions && (
-          <InstamarkTransactionsPanel transactions={mergedTransactions} />
+          <InstamarkTransactionsPanel
+            transactions={mergedTransactions}
+            userId={userId}
+            isSignedIn={isSignedIn}
+            accountLabel={displayName}
+          />
         )}
 
         <a

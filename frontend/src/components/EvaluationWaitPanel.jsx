@@ -2,7 +2,7 @@ const YANTRA_HOME_URL = import.meta.env.VITE_YANTRA_HOME_URL || "https://www.yan
 const YANTRA_MENTOR_URL =
   import.meta.env.VITE_YANTRA_MENTOR_URL || "https://www.yantraias.com/mentor";
 
-export default function EvaluationWaitPanel() {
+export default function EvaluationWaitPanel({ isBackground = false }) {
   return (
     <div className="evaluation-wait-panel" aria-live="polite" aria-atomic="true">
       <div className="evaluation-wait-spinner" aria-hidden="true">
@@ -11,11 +11,16 @@ export default function EvaluationWaitPanel() {
         <span />
       </div>
 
-      <p className="evaluation-wait-caption">YantraIAS is evaluating your answer sheet</p>
+      <p className="evaluation-wait-caption">
+        {isBackground
+          ? "Evaluation continues in the background"
+          : "YantraIAS is evaluating your answer sheet"}
+      </p>
 
       <p className="evaluation-wait-message">
-        Please feel free to explore our other services — we&apos;ll let you know as soon as your
-        evaluation is complete.
+        {isBackground
+          ? "You can leave this page or browse YantraIAS — your evaluation will keep running and results will sync when ready."
+          : "Please feel free to explore our other services — we'll let you know as soon as your evaluation is complete."}
       </p>
 
       <div className="evaluation-wait-actions">

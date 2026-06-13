@@ -39,8 +39,9 @@ export default function FinalSummaryCard({
           percent={percent}
           band={band}
           size={140}
+          emphasis="marks"
           label="Paper score"
-          sublabel={`${obtained} / ${maxMarks} marks`}
+          sublabel={`${obtained}/${maxMarks}`}
         />
 
         <div className="summary-grid">
@@ -51,10 +52,6 @@ export default function FinalSummaryCard({
           <div>
             <strong>Duration</strong>
             <span>{summary?.total_duration ?? meta.total_duration_seconds ?? 0}s</span>
-          </div>
-          <div>
-            <strong>Tokens</strong>
-            <span>{summary?.total_tokens ?? meta.total_tokens ?? 0}</span>
           </div>
           <div>
             <strong>Marks obtained</strong>

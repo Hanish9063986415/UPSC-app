@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { formatInr } from "../lib/pdfPricing";
-import { downloadTransactionPdf } from "../lib/instamarkTransactionAssets";
+import { downloadTransactionAnalysis, saveAnalysisFromCompletePackage } from "../lib/instamarkTransactionAssets";
+import { fetchInstamarkEvaluation } from "../lib/api";
 import {
   formatDuration,
   formatTransactionDate,
@@ -56,15 +57,15 @@ function TransactionStrip({ tx, serial, onDownload, downloading }) {
       </div>
 
       <div className="instamark-tx-strip-cell instamark-tx-strip-pdf">
-        <span className="instamark-tx-strip-label">Evaluated PDF</span>
-        {tx.hasPdfCopy ? (
+        <span className="instamark-tx-strip-label">Analysis report</span>
+        {tx.hasAnalysisReport || tx.hasPdfCopy ? (
           <button
             type="button"
             className="instamark-tx-download-btn"
             disabled={downloading}
             onClick={() => onDownload(tx)}
           >
-            {downloading ? "Downloading…" : "Download copy"}
+            {downloading ? "Preparing…" : "Download analysis PDF"}
           </button>
         ) : (
           <span className="instamark-tx-strip-muted">Not available</span>
@@ -81,7 +82,12 @@ function TransactionStrip({ tx, serial, onDownload, downloading }) {
   );
 }
 
-export default function InstamarkTransactionsPanel({ transactions = [] }) {
+export default function InstamarkTransactionsPanel({
+  transactions = [],
+  userId = null,
+  isSignedIn = false,
+  accountLabel = null
+}) {
   const [downloadingId, setDownloadingId] = useState("");
   const totals = getInstamarkTransactionTotals(transactions);
   const serialMap = useMemo(() => getInstamarkSerialMap(transactions), [transactions]);
@@ -89,19 +95,43 @@ export default function InstamarkTransactionsPanel({ transactions = [] }) {
   const handleDownload = async (tx) => {
     setDownloadingId(tx.id);
     try {
-      await downloadTransactionPdf(tx.id, tx.fileName);
+      let ok = await downloadTransactionAnalysis(tx.id, tx.fileName);
+      if (!ok && tx.serverEvaluationId) {
+        const record = await fetchInstamarkEvaluation(tx.serverEvaluationId);
+        if (record?.complete_package) {
+          await saveAnalysisFromCompletePackage(tx.id, record.complete_package, {
+            sourceFileName: tx.fileName
+          });
+          ok = await downloadTransactionAnalysis(tx.id, tx.fileName);
+        }
+      }
+      if (!ok) {
+        window.alert("Analysis report is not available for this evaluation yet.");
+      }
     } finally {
       setDownloadingId("");
     }
   };
 
+  if (!isSignedIn || !userId) {
+    return (
+      <div className="instamark-tx-panel instamark-tx-panel--empty">
+        <p className="instamark-tx-empty-title">Account not linked</p>
+        <p className="muted instamark-tx-empty-hint">
+          Open Instamark from YantraIAS while logged in to see evaluations for your account only.
+        </p>
+      </div>
+    );
+  }
+
   if (!transactions.length) {
     return (
       <div className="instamark-tx-panel instamark-tx-panel--empty">
-        <p className="instamark-tx-empty-title">No Instamark transactions yet</p>
+        <p className="instamark-tx-empty-title">No evaluations for this account</p>
         <p className="muted instamark-tx-empty-hint">
-          Each evaluation appears here as a strip with PDF name, date, time taken, marks, and a
-          downloadable copy of your submitted answer sheet.
+          {accountLabel
+            ? `No Instamark transactions yet for ${accountLabel}.`
+            : "Complete an evaluation to see your history here."}
         </p>
       </div>
     );
@@ -109,6 +139,10 @@ export default function InstamarkTransactionsPanel({ transactions = [] }) {
 
   return (
     <div className="instamark-tx-panel" role="region" aria-label="Instamark transactions">
+      <div className="instamark-tx-account-bar">
+        <span className="instamark-tx-account-label">Showing evaluations for</span>
+        <strong className="instamark-tx-account-name">{accountLabel || userId}</strong>
+      </div>
       <div className="instamark-tx-summary">
         <div className="instamark-tx-stat">
           <span className="instamark-tx-stat-label">Evaluations</span>
@@ -126,7 +160,7 @@ export default function InstamarkTransactionsPanel({ transactions = [] }) {
         <span>Date</span>
         <span>Evaluation time</span>
         <span>Marks</span>
-        <span>Evaluated PDF</span>
+        <span>Analysis PDF</span>
       </div>
 
       <ul className="instamark-tx-strip-list">

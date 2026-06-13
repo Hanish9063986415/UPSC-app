@@ -5,33 +5,20 @@ import QuestionResultCard from "./components/QuestionResultCard";
 import FinalSummaryCard from "./components/FinalSummaryCard";
 import QuestionNavigator from "./components/QuestionNavigator";
 import PaperAnalyticsPanel from "./components/PaperAnalyticsPanel";
-import ProgressTimeline from "./components/ProgressTimeline";
 import EvaluationWaitPanel from "./components/EvaluationWaitPanel";
 import WorkspaceNextSteps from "./components/WorkspaceNextSteps";
-import { getQuestionScores } from "./lib/evaluationMetrics";
+import { useYantraUser } from "./hooks/useYantraUser";
 import { calculateEvaluationPrice, formatInr, PRICE_PER_PAGE_INR } from "./lib/pdfPricing";
 import {
   addInstamarkTransaction,
-  extractEvaluationSummary,
   getVisibleInstamarkTransactions,
   loadInstamarkTransactions,
-  removeInstamarkTransaction,
-  updateInstamarkTransaction
 } from "./lib/instamarkTransactions";
-import { saveTransactionPdf } from "./lib/instamarkTransactionAssets";
-import { API_BASE_URL, checkApiHealth, formatFetchError, getYantraAuthHeaders, getYantraUserId } from "./lib/api";
-
-function parseSseChunk(chunk) {
-  const line = chunk.split("\n").find((l) => l.startsWith("data: "));
-  if (!line) return null;
-  try {
-    return JSON.parse(line.replace("data: ", ""));
-  } catch {
-    return null;
-  }
-}
+import { evaluationRunner } from "./lib/evaluationRunner";
+import { checkApiHealth, formatFetchError, getYantraUserId } from "./lib/api";
 
 function Dashboard() {
+  const { userId } = useYantraUser();
   const [file, setFile] = useState(null);
   const [pdfMeta, setPdfMeta] = useState({
     pageCount: null,
@@ -41,7 +28,6 @@ function Dashboard() {
   });
   const [status, setStatus] = useState("Idle");
   const [apiOnline, setApiOnline] = useState(null);
-  const [progress, setProgress] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [summary, setSummary] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -56,16 +42,15 @@ function Dashboard() {
     setInstamarkTransactions(loadInstamarkTransactions());
   };
 
+  useEffect(() => {
+    refreshInstamarkTransactions();
+  }, [userId]);
+
   const visibleTransactions = useMemo(
     () => getVisibleInstamarkTransactions(instamarkTransactions),
     [instamarkTransactions]
   );
 
-  const discardFailedTransaction = () => {
-    const id = activeTransactionIdRef.current;
-    if (id) removeInstamarkTransaction(id);
-    refreshInstamarkTransactions();
-  };
   const canSubmit = useMemo(
     () =>
       !!file &&
@@ -76,8 +61,45 @@ function Dashboard() {
       apiOnline !== false,
     [file, pdfMeta, busy, apiOnline]
   );
-  const isComplete = status === "Completed";
+  const isComplete = Boolean(summary) || status === "Completed";
   const statusIsError = status.startsWith("Error:") || apiOnline === false;
+  const isBackgroundEval = status.startsWith("Evaluating in background");
+  const isEvaluating = busy && !isComplete && !statusIsError;
+  const showEvaluationPanels = busy || questions.length > 0;
+  const evaluationQuestionTotal =
+    questions.length > 0 ? questions[questions.length - 1]?.total ?? questions.length : null;
+
+  useEffect(() => {
+    evaluationRunner.syncPendingEvaluations(refreshInstamarkTransactions);
+
+    return evaluationRunner.subscribe((job) => {
+      if (!job?.userInitiated) return;
+
+      setQuestions(job.questions);
+      setSummary(job.summary);
+      setBusy(job.status === "running" || job.status === "background");
+
+      if (job.status === "running") {
+        setStatus("Evaluating…");
+      } else if (job.status === "background") {
+        setStatus(
+          "Evaluating in background — you can leave this page. Results will appear when ready."
+        );
+      } else if (job.status === "completed") {
+        setStatus(
+          job.summary?.persisted === false
+            ? job.summary?.persist_error
+              ? `Results ready, but not saved to database: ${job.summary.persist_error}`
+              : "Results ready, but not saved to database (check DATABASE_URL and Supabase tables)."
+            : "Completed"
+        );
+        refreshInstamarkTransactions();
+      } else if (job.status === "error") {
+        setStatus(`Error: ${job.error || "Evaluation failed"}`);
+        refreshInstamarkTransactions();
+      }
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,12 +129,14 @@ function Dashboard() {
       setActiveQuestionNumber(null);
       return;
     }
+    if (busy) return;
+
     const exists = questions.some((q) => q.question_number === activeQuestionNumber);
     if (!exists) {
       const last = questions[questions.length - 1];
       setActiveQuestionNumber(last?.question_number ?? null);
     }
-  }, [questions, activeQuestionNumber]);
+  }, [questions, activeQuestionNumber, busy]);
 
   const handleFileChange = async (event) => {
     const selected = event.target.files?.[0] || null;
@@ -158,9 +182,7 @@ function Dashboard() {
       return;
     }
 
-    setBusy(true);
     setStatus("Evaluating…");
-    setProgress([]);
     setQuestions([]);
     setSummary(null);
     setActiveQuestionNumber(null);
@@ -168,21 +190,12 @@ function Dashboard() {
     const transactionId = addInstamarkTransaction({
       fileName: file.name,
       pageCount: pdfMeta.pageCount,
-      amount: pdfMeta.totalPrice
+      amount: pdfMeta.totalPrice,
+      yantraUserId: getYantraUserId()
     });
     activeTransactionIdRef.current = transactionId;
     evaluationStartedAtRef.current = Date.now();
     refreshInstamarkTransactions();
-
-    saveTransactionPdf(transactionId, file)
-      .then(() => {
-        updateInstamarkTransaction(transactionId, { hasPdfCopy: true });
-        refreshInstamarkTransactions();
-      })
-      .catch(() => {
-        updateInstamarkTransaction(transactionId, { hasPdfCopy: false });
-        refreshInstamarkTransactions();
-      });
 
     const formData = new FormData();
     formData.append("file", file);
@@ -194,93 +207,15 @@ function Dashboard() {
       formData.append("yantra_user_id", yantraUserId);
     }
 
-    let evaluationSucceeded = false;
+    setBusy(true);
+    await evaluationRunner.start({
+      formData,
+      transactionId,
+      fileName: file.name
+    });
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/evaluate-stream`, {
-        method: "POST",
-        headers: getYantraAuthHeaders(),
-        body: formData
-      });
-
-      if (!response.ok || !response.body) {
-        throw new Error(`Failed: ${response.status} ${response.statusText}`);
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split("\n\n");
-        buffer = chunks.pop() || "";
-
-        chunks.forEach((chunk) => {
-          const payload = parseSseChunk(chunk);
-          if (!payload) return;
-          const type = payload.type || "unknown";
-
-          if (type === "progress") {
-            const message = payload.message || "Processing...";
-            setProgress((prev) => {
-              if (prev[prev.length - 1] === message) return prev;
-              return [...prev, message];
-            });
-          } else if (type === "question_complete") {
-            setQuestions((prev) => [...prev, payload]);
-            setActiveQuestionNumber(payload.question_number ?? null);
-          } else if (type === "question_error") {
-            setQuestions((prev) => [...prev, payload]);
-            setActiveQuestionNumber(payload.question_number ?? null);
-          } else if (type === "final_summary") {
-            setSummary(payload);
-            setStatus("Completed");
-            evaluationSucceeded = true;
-            const evalSummary = extractEvaluationSummary(payload);
-            const clientDuration =
-              evaluationStartedAtRef.current != null
-                ? Math.round((Date.now() - evaluationStartedAtRef.current) / 1000)
-                : null;
-            updateInstamarkTransaction(activeTransactionIdRef.current, {
-              status: "completed",
-              completedAt: new Date().toISOString(),
-              serverEvaluationId: payload.evaluation_id || null,
-              persistedToDatabase: payload.persisted === true,
-              ...evalSummary,
-              durationSeconds: evalSummary.durationSeconds ?? clientDuration
-            });
-            if (payload.persisted !== true) {
-              const saveHint = payload.persist_error
-                ? `Results ready, but not saved to database: ${payload.persist_error}`
-                : "Results ready, but not saved to database (check DATABASE_URL and Supabase tables).";
-              setStatus(saveHint);
-            }
-            refreshInstamarkTransactions();
-          } else if (type === "error") {
-            setStatus(payload.message || "Error");
-            discardFailedTransaction();
-          }
-        });
-      }
-    } catch (error) {
-      setStatus(`Error: ${formatFetchError(error)}`);
-      discardFailedTransaction();
-    } finally {
-      if (!evaluationSucceeded && activeTransactionIdRef.current) {
-        const current = loadInstamarkTransactions().find(
-          (tx) => tx.id === activeTransactionIdRef.current
-        );
-        if (current?.status === "processing") {
-          discardFailedTransaction();
-        }
-      }
-      activeTransactionIdRef.current = null;
-      evaluationStartedAtRef.current = null;
-      setBusy(false);
-    }
+    activeTransactionIdRef.current = null;
+    evaluationStartedAtRef.current = null;
   };
 
   const fileLabel = file?.name
@@ -294,9 +229,7 @@ function Dashboard() {
       <section className="workspace-shell glass-card">
           <form onSubmit={handleEvaluate} className="workspace-upload-panel">
             <div className="workspace-upload-intro">
-              <p className="eyebrow">Instamark · Live evaluation</p>
-              <h1 className="workspace-upload-title">Answer evaluation workspace</h1>
-              <p className="muted workspace-upload-hint">Upload your PDF answer sheet to begin</p>
+              <h1 className="workspace-upload-title">AI Answer Evaluation</h1>
             </div>
 
             <div className="workspace-upload-fields">
@@ -382,6 +315,11 @@ function Dashboard() {
                     ? `Start evaluation · ${formatInr(pdfMeta.totalPrice)}`
                     : "Start evaluation"}
             </button>
+            {statusIsError && !showEvaluationPanels && status !== "Idle" && (
+              <p className="workspace-upload-error" role="alert">
+                {status}
+              </p>
+            )}
           </form>
       </section>
 
@@ -397,61 +335,38 @@ function Dashboard() {
         <PaperAnalyticsPanel questions={questions} onSelectQuestion={handleSelectQuestion} />
       )}
 
-      <div className={`dashboard-main${questions.length === 0 ? " dashboard-main--idle" : ""}`}>
-        <aside className="glass-card status-card">
+      {(isComplete || summary) && (
+        <FinalSummaryCard
+          summary={summary}
+          questions={questions}
+          sourceFileName={file?.name}
+          canDownload={isComplete && questions.length > 0}
+        />
+      )}
+
+      {isEvaluating && (
+        <aside id="live-progress-panel" className="glass-card status-card live-progress-panel">
           <div className="status-card-head">
             <h2>Live progress</h2>
-            <span className={`status-live-pill${busy ? " active" : ""}${apiOnline === false ? " offline" : ""}`}>
-              {busy ? "Running" : isComplete ? "Done" : apiOnline === false ? "Offline" : "Ready"}
+            <span
+              className={`status-live-pill active${apiOnline === false ? " offline" : ""}`}
+            >
+              {apiOnline === false ? "Offline" : isBackgroundEval ? "Background" : "Running"}
             </span>
           </div>
-          {busy && !isComplete && !statusIsError ? (
-            <EvaluationWaitPanel />
-          ) : (
-            <p className={`status-text${isComplete ? " done" : ""}${statusIsError ? " error" : ""}`}>
-              {status}
+          <EvaluationWaitPanel isBackground={isBackgroundEval} />
+          {questions.length > 0 && evaluationQuestionTotal != null && (
+            <p className="evaluation-progress-summary" aria-live="polite">
+              {questions.length} of {evaluationQuestionTotal} question
+              {evaluationQuestionTotal === 1 ? "" : "s"} evaluated
             </p>
           )}
-          {!busy && progress.length > 0 && (
-            <ProgressTimeline steps={progress} isComplete={isComplete} />
-          )}
-          {questions.length > 0 && (
-            <div className="status-scoreboard">
-              <strong>Scoreboard</strong>
-              <ul className="scoreboard-list">
-                {questions.map((q, idx) => {
-                  const s = getQuestionScores(q);
-                  return (
-                    <li key={`sb-${s.questionNumber}-${idx}`}>
-                      <button
-                        type="button"
-                        className={`scoreboard-link${
-                          s.questionNumber === activeQuestionNumber ? " active" : ""
-                        }`}
-                        onClick={() => handleSelectQuestion(s.questionNumber)}
-                      >
-                        Q{s.questionNumber}:{" "}
-                        {q.error ? "Error" : `${s.awarded}/${s.possible} (${s.percent}%)`}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
         </aside>
+      )}
 
+      {questions.length > 0 && (
         <section className="glass-card results-card">
           <h2>Results ({questions.length})</h2>
-          {questions.length === 0 && (
-            <div className="results-empty">
-              <strong>No results yet</strong>
-              <p className="muted">
-                Upload your answer PDF and start evaluation. Question-wise feedback will appear here
-                in real time.
-              </p>
-            </div>
-          )}
           {questions.map((q, idx) => (
             <QuestionResultCard
               key={`${q.question_number}-${q.current ?? idx}`}
@@ -461,14 +376,7 @@ function Dashboard() {
             />
           ))}
         </section>
-      </div>
-
-      <FinalSummaryCard
-        summary={summary}
-        questions={questions}
-        sourceFileName={file?.name}
-        canDownload={isComplete && questions.length > 0}
-      />
+      )}
 
       <WorkspaceNextSteps transactions={visibleTransactions} />
 

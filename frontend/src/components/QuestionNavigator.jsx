@@ -1,16 +1,20 @@
+import { useMemo } from "react";
 import { getQuestionScores, getScoreBand } from "../lib/evaluationMetrics";
+import { sortQuestionsByNumber } from "../lib/paperAnalytics";
 
 export default function QuestionNavigator({ questions, activeQuestionNumber, onSelect }) {
-  if (!questions?.length) return null;
+  const sortedQuestions = useMemo(() => sortQuestionsByNumber(questions), [questions]);
+
+  if (!sortedQuestions.length) return null;
 
   return (
     <nav className="glass-card question-navigator" aria-label="Question navigation">
       <div className="question-navigator-head">
         <h2>Questions</h2>
-        <span className="question-navigator-count">{questions.length} evaluated</span>
+        <span className="question-navigator-count">{sortedQuestions.length} evaluated</span>
       </div>
       <div className="question-navigator-track" role="tablist">
-        {questions.map((item, idx) => {
+        {sortedQuestions.map((item, idx) => {
           const scores = getQuestionScores(item);
           const band = item.error ? "error" : getScoreBand(scores.percent);
           const isActive = scores.questionNumber === activeQuestionNumber;

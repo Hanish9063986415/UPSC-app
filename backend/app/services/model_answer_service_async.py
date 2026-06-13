@@ -221,7 +221,7 @@ Brief 1-2 statement introduction.
 After completing the model answer, add a separate "Recent Current Affairs" section below the conclusion:
 
 **Recent Current Affairs:**
-Search for 2-3 recent developments 2025 or 2024 related to this question topic. For each development, include:
+Search for 2-3 recent developments 2026 or 2025 related to this question topic. For each development, include:
 - Specific dates, statistics, and quantitative data
 - Official sources (government reports, ministry data, research studies)
 - Clear connection to the question topic with evidence
