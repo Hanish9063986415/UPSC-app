@@ -3,7 +3,6 @@ import autoTable from "jspdf-autotable";
 import {
   computePaperStats,
   getQuestionBarChartData,
-  collectKeywordFrequency,
   compareQuestionNumbers
 } from "./paperAnalytics";
 import { getQuestionScores, getParameters } from "./evaluationMetrics";
@@ -229,15 +228,6 @@ function addQuestionSection(w, item) {
   w.spacer(6);
 }
 
-function addFrequencyList(w, title, items, limit = 12) {
-  if (!items?.length) return;
-  w.subTitle(title);
-  items.slice(0, limit).forEach((row, idx) => {
-    w.paragraph(`${idx + 1}. ${row.label} (${row.count}×)`);
-  });
-  w.spacer(2);
-}
-
 export function buildAnalysisPdf({ questions, summary, sourceFileName }) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const w = createWriter(doc);
@@ -297,8 +287,6 @@ export function buildAnalysisPdf({ questions, summary, sourceFileName }) {
     w.paragraph(`AI tokens used: ${summary?.total_tokens ?? meta.total_tokens}`);
   }
   w.spacer(4);
-
-  addFrequencyList(w, "Keywords for success (frequency)", collectKeywordFrequency(questions));
 
   w.newPage();
   w.sectionTitle("Question-wise detailed analysis");

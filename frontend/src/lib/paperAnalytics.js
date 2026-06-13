@@ -204,32 +204,6 @@ export function collectStrengthFrequency(questions) {
   return countByLabel(items, (i) => i.text);
 }
 
-export function collectKeywordFrequency(questions) {
-  const items = [];
-  questions
-    .filter((q) => !q.error)
-    .forEach((q) => {
-      const keywords = q.evaluation?.overall_upsc_assessment?.keywords_for_success || [];
-      keywords.forEach((text) => items.push({ text, questionNumber: q.question_number }));
-    });
-  return countByLabel(items, (i) => i.text);
-}
-
-export function collectKeywordsByQuestion(questions) {
-  return questions
-    .filter((q) => !q.error)
-    .map((q) => {
-      const keywords = (q.evaluation?.overall_upsc_assessment?.keywords_for_success || []).filter(Boolean);
-      const uniqueKeywords = [...new Set(keywords)];
-
-      return {
-        questionNumber: q.question_number,
-        keywords: uniqueKeywords.sort((a, b) => a.localeCompare(b)),
-        count: uniqueKeywords.length
-      };
-    });
-}
-
 export function getExpectationsStats(item) {
   const expectations = item.evaluation?.upsc_question_analysis?.upsc_expectations || [];
   const paramCount = getParameters(item).length;

@@ -1,54 +1,78 @@
-import {
-  computePaperStats,
-  getParameterHeatmapData
-} from "../lib/paperAnalytics";
+import { computePaperStats, getParameterHeatmapData } from "../lib/paperAnalytics";
 import ScoreRing from "./charts/ScoreRing";
 import ParameterHeatmap from "./charts/ParameterHeatmap";
-import KeywordFrequencyPanel from "./charts/KeywordFrequencyPanel";
+import DownloadAnalysisButton from "./DownloadAnalysisButton";
 
-export default function PaperAnalyticsPanel({ questions, onSelectQuestion }) {
+export default function PaperAnalyticsPanel({
+  questions,
+  summary,
+  sourceFileName,
+  canDownload = false,
+  onSelectQuestion
+}) {
   if (!questions?.length) return null;
 
   const stats = computePaperStats(questions);
   const heatmap = getParameterHeatmapData(questions);
+  const meta = summary?.complete_package?.metadata || {};
+  const obtained = meta.total_ai_magic_marks ?? meta.total_param_marks ?? stats.totalAwarded ?? 0;
+  const maxMarks = meta.total_max_marks ?? stats.totalPossible ?? 0;
+  const percent = maxMarks > 0 ? Math.round((obtained / maxMarks) * 100) : stats.percent;
+  const band = stats.band ?? (percent < 40 ? "low" : percent < 70 ? "mid" : "high");
 
-  return (    <section className="glass-card analytics-panel" aria-label="Paper analytics">
-      <h2>Paper analytics</h2>
+  return (
+    <section className="glass-card analytics-panel summary-card" aria-label="Final summary">
+      <div className="summary-head">
+        <div className="summary-head-main">
+          <h2>Final summary</h2>
+          {summary && <span className="summary-badge">Evaluation complete</span>}
+        </div>
+        {canDownload && (
+          <DownloadAnalysisButton
+            questions={questions}
+            summary={summary}
+            sourceFileName={sourceFileName}
+          />
+        )}
+      </div>
 
-      <div className="analytics-kpi-grid">
+      <div className="summary-body analytics-kpi-grid">
         <div className="analytics-kpi-ring">
           <ScoreRing
-            percent={stats.percent}
-            band={stats.band}
+            percent={percent}
+            band={band}
             size={156}
             emphasis="marks"
-            label="Overall"
-            sublabel={`${stats.totalAwarded}/${stats.totalPossible}`}
+            label="Paper score"
+            sublabel={`${obtained}/${maxMarks}`}
           />
         </div>
-        <div className="analytics-kpi-tiles">
-          <div className="kpi-tile">
-            <span className="kpi-value">{stats.evaluatedCount}</span>
-            <span className="kpi-label">Questions evaluated</span>
+
+        <div className="summary-grid analytics-kpi-tiles">
+          <div>
+            <strong>Questions</strong>
+            <span>{summary?.total_questions ?? meta.total_questions ?? questions.length}</span>
           </div>
-          <div className="kpi-tile">
-            <span className="kpi-value">{stats.totalParameters}</span>
-            <span className="kpi-label">Parameter reviews</span>
+          <div>
+            <strong>Duration</strong>
+            <span>{summary?.total_duration ?? meta.total_duration_seconds ?? 0}s</span>
           </div>
-          <div className="kpi-tile good">
-            <span className="kpi-value">{stats.totalStrengths}</span>
-            <span className="kpi-label">Strengths noted</span>
+          <div>
+            <strong>Marks obtained</strong>
+            <span>{obtained}</span>
           </div>
-          <div className="kpi-tile warn">
-            <span className="kpi-value">{stats.totalGaps}</span>
-            <span className="kpi-label">Gaps flagged</span>
+          <div>
+            <strong>Max marks</strong>
+            <span>{maxMarks}</span>
           </div>
-          {stats.errorCount > 0 && (
-            <div className="kpi-tile error">
-              <span className="kpi-value">{stats.errorCount}</span>
-              <span className="kpi-label">Errors</span>
-            </div>
-          )}
+          <div>
+            <strong>Strengths</strong>
+            <span>{stats.totalStrengths}</span>
+          </div>
+          <div>
+            <strong>Gaps flagged</strong>
+            <span>{stats.totalGaps}</span>
+          </div>
         </div>
       </div>
 
@@ -62,14 +86,6 @@ export default function PaperAnalyticsPanel({ questions, onSelectQuestion }) {
           columns={heatmap.columns}
           onSelectQuestion={onSelectQuestion}
         />
-      </div>
-
-      <div className="analytics-section keyword-frequency-section">
-        <h3>Keyword frequency</h3>
-        <p className="muted section-hint">
-          Select a question to view its success keywords from the evaluation.
-        </p>
-        <KeywordFrequencyPanel questions={questions} onSelectQuestion={onSelectQuestion} />
       </div>
     </section>
   );

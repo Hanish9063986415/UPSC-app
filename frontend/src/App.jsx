@@ -2,7 +2,6 @@ import { Route, Routes } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "./components/AppShell";
 import QuestionResultCard from "./components/QuestionResultCard";
-import FinalSummaryCard from "./components/FinalSummaryCard";
 import QuestionNavigator from "./components/QuestionNavigator";
 import PaperAnalyticsPanel from "./components/PaperAnalyticsPanel";
 import EvaluationWaitPanel from "./components/EvaluationWaitPanel";
@@ -332,15 +331,12 @@ function Dashboard() {
       )}
 
       {questions.length > 0 && (
-        <PaperAnalyticsPanel questions={questions} onSelectQuestion={handleSelectQuestion} />
-      )}
-
-      {(isComplete || summary) && (
-        <FinalSummaryCard
-          summary={summary}
+        <PaperAnalyticsPanel
           questions={questions}
+          summary={summary}
           sourceFileName={file?.name}
           canDownload={isComplete && questions.length > 0}
+          onSelectQuestion={handleSelectQuestion}
         />
       )}
 

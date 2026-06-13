@@ -3,9 +3,10 @@ import { getQuestionScores, getScoreBand } from "../lib/evaluationMetrics";
 import ParameterAccordion from "./ParameterAccordion";
 import QuestionAnalyticsOverview from "./QuestionAnalyticsOverview";
 import VerbatimText from "./VerbatimText";
+import { countAnswerWords, parseAnswerContent } from "../lib/formattedAnswer";
 
 const EXTRACTED_ANSWER_PREVIEW_LINES = 4;
-const MODEL_ANSWER_PREVIEW_LINES = 1;
+const MODEL_ANSWER_PREVIEW_LINES = 3;
 
 function answerNeedsPreviewToggle(text) {
   if (!text) return false;
@@ -13,33 +14,72 @@ function answerNeedsPreviewToggle(text) {
   return lines.length > EXTRACTED_ANSWER_PREVIEW_LINES || text.length > 280;
 }
 
+function FormattedAnswerContent({ text }) {
+  const blocks = parseAnswerContent(text);
+
+  if (!blocks.length) {
+    return (
+      <div className="extracted-answer-content">
+        <VerbatimText text={text} as="div" className="extracted-answer-paragraph verbatim-text" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="extracted-answer-content">
+      {blocks.map((block, index) =>
+        block.type === "list" ? (
+          <ol key={`list-${index}`} className="extracted-answer-list">
+            {block.items.map((item, itemIndex) => (
+              <li key={`item-${index}-${itemIndex}`} className="extracted-answer-list-item">
+                <VerbatimText text={item} as="span" className="extracted-answer-list-text verbatim-text" />
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p key={`para-${index}`} className="extracted-answer-paragraph">
+            <VerbatimText text={block.text} as="span" className="verbatim-text" />
+          </p>
+        )
+      )}
+    </div>
+  );
+}
+
 function ExtractedAnswerSection({ text }) {
   const [expanded, setExpanded] = useState(false);
   const canToggle = answerNeedsPreviewToggle(text);
+  const wordCount = countAnswerWords(text);
 
   return (
     <section className="sub-card extracted-answer-section">
       <div className="extracted-answer-head">
-        <h4>Your answer (extracted)</h4>
-        {canToggle && (
-          <button
-            type="button"
-            className="extracted-answer-view-more"
-            onClick={() => setExpanded((v) => !v)}
-            aria-expanded={expanded}
-          >
-            {expanded ? "Show less" : "View more"}
-          </button>
-        )}
+        <div className="extracted-answer-head-main">
+          <span className="extracted-answer-eyebrow">Extracted from your sheet</span>
+          <h4>Your answer</h4>
+        </div>
+        <div className="extracted-answer-head-actions">
+          {wordCount > 0 && (
+            <span className="extracted-answer-meta">
+              {wordCount} word{wordCount === 1 ? "" : "s"}
+            </span>
+          )}
+          {canToggle && (
+            <button
+              type="button"
+              className="extracted-answer-view-more"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+            >
+              {expanded ? "Show less" : "View more"}
+            </button>
+          )}
+        </div>
       </div>
       <div
         className={`extracted-answer-body${canToggle && !expanded ? " is-collapsed" : " is-expanded"}`}
       >
-        <VerbatimText
-          text={text}
-          as="div"
-          className="answer-text verbatim-text extracted-answer-text"
-        />
+        <FormattedAnswerContent text={text} />
       </div>
     </section>
   );
@@ -48,7 +88,7 @@ function ExtractedAnswerSection({ text }) {
 function modelAnswerNeedsToggle(text) {
   if (!text) return false;
   const lines = text.split(/\r?\n/);
-  return lines.length > MODEL_ANSWER_PREVIEW_LINES || text.length > 100;
+  return lines.length > MODEL_ANSWER_PREVIEW_LINES || text.length > 220;
 }
 
 function ModelAnswerSection({ text }) {
