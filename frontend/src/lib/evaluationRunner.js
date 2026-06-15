@@ -1,6 +1,7 @@
 import { API_BASE_URL, fetchInstamarkEvaluations, getYantraAuthHeaders } from "./api";
 import { removeInstamarkTransaction, updateInstamarkTransaction, loadInstamarkTransactions, extractEvaluationSummary } from "./instamarkTransactions";
 import { saveTransactionAnalysis } from "./instamarkTransactionAssets";
+import { notifyWalletChanged } from "./walletEvents";
 
 const IN_FLIGHT_KEY = "instamark-evaluation-in-flight";
 const POLL_MS = 8000;
@@ -182,6 +183,9 @@ class EvaluationRunner {
       }
     } else if (type === "question_complete" || type === "question_error") {
       job.questions = [...job.questions, payload];
+    } else if (type === "wallet_debit") {
+      job.walletBalance = payload.balance_inr ?? null;
+      notifyWalletChanged();
     } else if (type === "final_summary") {
       applyFinalSummary(job, payload, fileName);
     } else if (type === "error") {

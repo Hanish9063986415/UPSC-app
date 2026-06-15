@@ -7,7 +7,7 @@ from sqlalchemy.pool import NullPool
 from app.config.settings import get_settings
 from app.core.logging_config import logger
 from app.db.base import Base
-from app.models import instamark_evaluation  # noqa: F401
+from app.models import instamark_evaluation, instamark_wallet  # noqa: F401
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None

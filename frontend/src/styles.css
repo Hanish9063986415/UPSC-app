@@ -120,6 +120,50 @@ body {
   backdrop-filter: blur(10px);
 }
 
+.user-account-meta {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.user-account-wallet {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 108px;
+  padding: 8px 12px;
+  border: 1px solid rgba(5, 150, 105, 0.22);
+  border-radius: var(--radius-pill);
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.08);
+}
+
+.user-account-wallet-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #047857;
+  font-weight: 700;
+}
+
+.user-account-wallet-value {
+  font-size: 0.95rem;
+  color: #065f46;
+  line-height: 1.1;
+}
+
+.user-account-id {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 .user-account-brand {
   display: inline-flex;
   align-items: center;
@@ -834,6 +878,29 @@ body {
 .pdf-pricing-total strong {
   font-size: 1.15rem;
   color: #c2410c;
+}
+
+.pdf-pricing-wallet-after {
+  padding-top: 6px;
+  border-top: 1px dashed #e2e8f0;
+  color: #047857;
+}
+
+.pdf-pricing-wallet-after strong {
+  font-size: 1rem;
+  color: #065f46;
+}
+
+.pdf-pricing-wallet-after.is-insufficient {
+  color: #b91c1c;
+}
+
+.pdf-pricing-wallet-after.is-insufficient strong {
+  color: #991b1b;
+}
+
+.workspace-wallet-note {
+  margin-top: 10px;
 }
 
 .workspace-field label,

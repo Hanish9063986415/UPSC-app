@@ -22,7 +22,7 @@ class InstamarkEvaluation(Base):
     file_name: Mapped[str] = mapped_column(String(512), nullable=False)
     page_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     amount_inr: Mapped[float] = mapped_column(Numeric(10, 2), default=0, nullable=False)
-    rate_per_page: Mapped[float] = mapped_column(Numeric(10, 2), default=1, nullable=False)
+    rate_per_page: Mapped[float] = mapped_column(Numeric(10, 2), default=2, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="completed", nullable=False)
     question_count: Mapped[int | None] = mapped_column(Integer)
     duration_seconds: Mapped[float | None] = mapped_column(Numeric(10, 2))

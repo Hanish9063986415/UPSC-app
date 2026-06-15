@@ -41,6 +41,25 @@ export async function checkApiHealth() {
   }
 }
 
+export async function fetchInstamarkWallet() {
+  const userId = getYantraUserId();
+  if (!userId) {
+    throw new Error("Sign in with your YantraIAS account to view wallet credits.");
+  }
+
+  const params = new URLSearchParams({ yantra_user_id: userId });
+  const response = await fetch(`${API_BASE_URL}/api/instamark/wallet?${params}`, {
+    headers: getYantraAuthHeaders()
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.detail || "Could not load wallet balance.");
+  }
+
+  return response.json();
+}
+
 export async function fetchInstamarkEvaluations(limit = 50) {
   const userId = getYantraUserId();
   if (!userId) return [];

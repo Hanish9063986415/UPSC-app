@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     yantra_user_id_header: str = Field(
         default="X-Yantra-User-Id", validation_alias="YANTRA_USER_ID_HEADER"
     )
-    instamark_rate_per_page_inr: float = Field(default=1.0, validation_alias="INSTAMARK_RATE_PER_PAGE_INR")
+    instamark_rate_per_page_inr: float = Field(default=2.0, validation_alias="INSTAMARK_RATE_PER_PAGE_INR")
 
     # Processing Configuration
     image_max_pixels: Optional[int] = 178_956_970

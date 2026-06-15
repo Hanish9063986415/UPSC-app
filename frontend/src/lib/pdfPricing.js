@@ -1,4 +1,4 @@
-export const PRICE_PER_PAGE_INR = 1;
+export const PRICE_PER_PAGE_INR = 2;
 
 export function calculateEvaluationPrice(pageCount) {
   const pages = Number(pageCount) || 0;

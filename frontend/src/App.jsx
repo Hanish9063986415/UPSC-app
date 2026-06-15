@@ -7,6 +7,7 @@ import PaperAnalyticsPanel from "./components/PaperAnalyticsPanel";
 import EvaluationWaitPanel from "./components/EvaluationWaitPanel";
 import WorkspaceNextSteps from "./components/WorkspaceNextSteps";
 import { useYantraUser } from "./hooks/useYantraUser";
+import { useInstamarkWallet } from "./hooks/useInstamarkWallet";
 import { calculateEvaluationPrice, formatInr, PRICE_PER_PAGE_INR } from "./lib/pdfPricing";
 import {
   addInstamarkTransaction,
@@ -15,9 +16,11 @@ import {
 } from "./lib/instamarkTransactions";
 import { evaluationRunner } from "./lib/evaluationRunner";
 import { checkApiHealth, formatFetchError, getYantraUserId } from "./lib/api";
+import { notifyWalletChanged } from "./lib/walletEvents";
 
 function Dashboard() {
-  const { userId } = useYantraUser();
+  const { userId, isSignedIn } = useYantraUser();
+  const { balanceInr, walletEnabled, refreshWallet } = useInstamarkWallet(userId);
   const [file, setFile] = useState(null);
   const [pdfMeta, setPdfMeta] = useState({
     pageCount: null,
@@ -50,16 +53,28 @@ function Dashboard() {
     [instamarkTransactions]
   );
 
-  const canSubmit = useMemo(
-    () =>
-      !!file &&
-      pdfMeta.pageCount > 0 &&
-      !pdfMeta.loading &&
-      !pdfMeta.error &&
-      !busy &&
-      apiOnline !== false,
-    [file, pdfMeta, busy, apiOnline]
-  );
+  const canSubmit = useMemo(() => {
+    if (
+      !file ||
+      pdfMeta.pageCount <= 0 ||
+      pdfMeta.loading ||
+      pdfMeta.error ||
+      busy ||
+      apiOnline === false
+    ) {
+      return false;
+    }
+
+    if (walletEnabled && !isSignedIn) {
+      return false;
+    }
+
+    if (walletEnabled && pdfMeta.totalPrice != null && balanceInr != null) {
+      return balanceInr >= pdfMeta.totalPrice;
+    }
+
+    return true;
+  }, [file, pdfMeta, busy, apiOnline, walletEnabled, isSignedIn, balanceInr]);
   const isComplete = Boolean(summary) || status === "Completed";
   const statusIsError = status.startsWith("Error:") || apiOnline === false;
   const isBackgroundEval = status.startsWith("Evaluating in background");
@@ -93,12 +108,20 @@ function Dashboard() {
             : "Completed"
         );
         refreshInstamarkTransactions();
+        refreshWallet();
+        notifyWalletChanged();
       } else if (job.status === "error") {
         setStatus(`Error: ${job.error || "Evaluation failed"}`);
         refreshInstamarkTransactions();
+        refreshWallet();
+        notifyWalletChanged();
+      }
+
+      if (job.walletBalance != null) {
+        notifyWalletChanged();
       }
     });
-  }, []);
+  }, [refreshWallet]);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,9 +193,36 @@ function Dashboard() {
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const insufficientWallet =
+    walletEnabled &&
+    isSignedIn &&
+    pdfMeta.totalPrice != null &&
+    balanceInr != null &&
+    balanceInr < pdfMeta.totalPrice;
+
+  const submitBlockedReason = useMemo(() => {
+    if (walletEnabled && !isSignedIn) {
+      return "Sign in with your YantraIAS account to use wallet credits.";
+    }
+    if (insufficientWallet) {
+      return `Insufficient wallet balance. You have ${formatInr(balanceInr)} but need ${formatInr(pdfMeta.totalPrice)}.`;
+    }
+    return "";
+  }, [walletEnabled, isSignedIn, insufficientWallet, balanceInr, pdfMeta.totalPrice]);
+
   const handleEvaluate = async (event) => {
     event.preventDefault();
     if (!file) return;
+
+    if (walletEnabled && !getYantraUserId()) {
+      setStatus("Error: YantraIAS user id required for wallet billing.");
+      return;
+    }
+
+    if (insufficientWallet) {
+      setStatus(`Error: ${submitBlockedReason}`);
+      return;
+    }
 
     const online = await checkApiHealth();
     setApiOnline(online);
@@ -299,6 +349,22 @@ function Dashboard() {
                         <span>Total amount</span>
                         <strong>{formatInr(pdfMeta.totalPrice)}</strong>
                       </div>
+                      {walletEnabled && isSignedIn && balanceInr != null && (
+                        <>
+                          <div className="pdf-pricing-row">
+                            <span>Wallet balance</span>
+                            <span>{formatInr(balanceInr)}</span>
+                          </div>
+                          <div
+                            className={`pdf-pricing-row pdf-pricing-wallet-after${
+                              insufficientWallet ? " is-insufficient" : ""
+                            }`}
+                          >
+                            <span>After debit</span>
+                            <strong>{formatInr(balanceInr - pdfMeta.totalPrice)}</strong>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </>
                 )}
@@ -310,10 +376,19 @@ function Dashboard() {
                 ? "Evaluating…"
                 : pdfMeta.loading
                   ? "Checking PDF…"
-                  : canSubmit
+                  : canSubmit && pdfMeta.totalPrice != null
                     ? `Start evaluation · ${formatInr(pdfMeta.totalPrice)}`
-                    : "Start evaluation"}
+                    : insufficientWallet
+                      ? "Insufficient wallet balance"
+                      : walletEnabled && !isSignedIn
+                        ? "Sign in to evaluate"
+                        : "Start evaluation"}
             </button>
+            {submitBlockedReason && !busy && file && pdfMeta.pageCount > 0 && (
+              <p className="workspace-upload-error workspace-wallet-note" role="alert">
+                {submitBlockedReason}
+              </p>
+            )}
             {statusIsError && !showEvaluationPanels && status !== "Idle" && (
               <p className="workspace-upload-error" role="alert">
                 {status}

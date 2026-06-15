@@ -36,7 +36,7 @@ def _serialize_evaluation(record: InstamarkEvaluation) -> dict[str, Any]:
         "file_name": record.file_name,
         "page_count": record.page_count,
         "amount_inr": float(record.amount_inr or 0),
-        "rate_per_page": float(record.rate_per_page or 1),
+        "rate_per_page": float(record.rate_per_page or 2),
         "status": record.status,
         "question_count": record.question_count,
         "duration_seconds": float(record.duration_seconds)
@@ -65,7 +65,7 @@ async def save_instamark_evaluation(
     client_transaction_id: Optional[str] = None,
     page_count: Optional[int] = None,
     amount_inr: Optional[float] = None,
-    rate_per_page: float = 1.0,
+    rate_per_page: float = 2.0,
 ) -> Optional[str]:
     """Persist a completed evaluation. Returns evaluation UUID string or None if DB disabled."""
     factory = _get_session_factory()

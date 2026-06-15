@@ -8,6 +8,7 @@ from app.services.evaluation_storage_service import (
     get_instamark_evaluation,
     list_instamark_evaluations,
 )
+from app.services.wallet_service import get_wallet_summary
 
 router = APIRouter(prefix="/instamark", tags=["Instamark"])
 
@@ -23,6 +24,16 @@ def _resolve_user_id(
             detail="YantraIAS user id required. Pass yantra_user_id query param or X-Yantra-User-Id header.",
         )
     return user_id
+
+
+@router.get("/wallet")
+async def get_wallet(
+    yantra_user_id: Optional[str] = Query(None, description="YantraIAS user id"),
+    x_yantra_user_id: Optional[str] = Header(None, alias="X-Yantra-User-Id"),
+):
+    """Wallet credits for the signed-in YantraIAS user."""
+    user_id = _resolve_user_id(yantra_user_id, x_yantra_user_id)
+    return await get_wallet_summary(user_id)
 
 
 @router.get("/evaluations")

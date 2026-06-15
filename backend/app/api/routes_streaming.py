@@ -12,8 +12,15 @@ from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from app.config.settings import get_settings
 from app.core.logging_config import logger
 from app.core.memory_guard import get_evaluation_memory_guard
+from app.db.session import database_enabled
 from app.services.evaluation_pipeline import get_evaluation_pipeline
 from app.services.evaluation_storage_service import save_instamark_evaluation
+from app.services.wallet_service import (
+    InsufficientWalletBalance,
+    calculate_evaluation_amount,
+    debit_for_evaluation,
+    refund_evaluation_debit,
+)
 from app.utils.json_utils import create_sse_event
 
 router = APIRouter()
@@ -125,8 +132,40 @@ async def evaluate_pdf_stream(
         else:
             await event_queue.put(create_sse_event("question_complete", package))
 
+    debited_amount: float | None = None
+
     async def run_pipeline() -> None:
+        nonlocal debited_amount
         try:
+            if (
+                database_enabled()
+                and yantra_user_id
+                and page_count is not None
+                and page_count > 0
+            ):
+                expected_amount = calculate_evaluation_amount(
+                    page_count, settings.instamark_rate_per_page_inr
+                )
+                billed_amount = float(amount_inr) if amount_inr is not None else expected_amount
+                debit_result = await debit_for_evaluation(
+                    yantra_user_id=yantra_user_id,
+                    page_count=page_count,
+                    amount_inr=billed_amount,
+                    client_transaction_id=client_transaction_id,
+                )
+                debited_amount = debit_result.amount_inr
+                await event_queue.put(
+                    create_sse_event(
+                        "wallet_debit",
+                        {
+                            "balance_inr": debit_result.balance_inr,
+                            "amount_inr": debit_result.amount_inr,
+                            "page_count": debit_result.page_count,
+                            "rate_per_page_inr": debit_result.rate_per_page_inr,
+                        },
+                    )
+                )
+
             result = await pipeline.run(
                 pdf_bytes=file_bytes,
                 filename=filename,
@@ -175,9 +214,44 @@ async def evaluate_pdf_stream(
             )
         except ValueError as e:
             logger.warning(f"Validation error for {filename}: {e}")
+            if debited_amount and yantra_user_id:
+                await refund_evaluation_debit(
+                    yantra_user_id=yantra_user_id,
+                    amount_inr=debited_amount,
+                    client_transaction_id=client_transaction_id,
+                    note=str(e),
+                )
             await event_queue.put(create_sse_event("error", {"message": str(e)}))
+        except InsufficientWalletBalance as e:
+            logger.warning(
+                "Insufficient wallet for user=%s file=%s need=%s have=%s",
+                yantra_user_id,
+                filename,
+                e.required,
+                e.balance,
+            )
+            await event_queue.put(
+                create_sse_event(
+                    "error",
+                    {
+                        "message": (
+                            f"Insufficient wallet balance. You have ₹{e.balance:.2f} "
+                            f"but need ₹{e.required:.2f} for this evaluation."
+                        ),
+                        "code": "insufficient_wallet",
+                        "balance_inr": e.balance,
+                        "required_inr": e.required,
+                    },
+                )
+            )
         except Exception as e:
             logger.error(f"Streaming evaluation failed: {e}", exc_info=True)
+            if debited_amount and yantra_user_id:
+                await refund_evaluation_debit(
+                    yantra_user_id=yantra_user_id,
+                    amount_inr=debited_amount,
+                    client_transaction_id=client_transaction_id,
+                )
             await event_queue.put(
                 create_sse_event("error", {"message": f"Evaluation failed: {str(e)}"})
             )
@@ -397,6 +471,12 @@ async def evaluate_pdf_streaming(
         )
 
     resolved_user_id = (yantra_user_id or x_yantra_user_id or "").strip() or None
+
+    if database_enabled() and not resolved_user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="YantraIAS user id required for wallet billing. Pass yantra_user_id or X-Yantra-User-Id header.",
+        )
 
     logger.info(
         f"Starting streaming evaluation: {file.filename} "
