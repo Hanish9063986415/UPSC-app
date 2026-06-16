@@ -14,7 +14,23 @@ from app.models.user_wallet import UserWallet, WalletTransaction
 
 # YantraIAS wallet_transactions.category must be one of:
 # content, session, meet, wellness, subscription, other
+ALLOWED_WALLET_TX_CATEGORIES = frozenset(
+    {"content", "session", "meet", "wellness", "subscription", "other"}
+)
 WALLET_TX_CATEGORY = "other"
+
+
+def normalize_wallet_category(category: str | None = None) -> str:
+    """Map Instamark debits to a category accepted by YantraIAS wallet_transactions."""
+    candidate = (category or WALLET_TX_CATEGORY).strip().lower()
+    if candidate not in ALLOWED_WALLET_TX_CATEGORIES:
+        logger.warning(
+            "Unsupported wallet category %r — using %r for Instamark transaction",
+            category,
+            WALLET_TX_CATEGORY,
+        )
+        return WALLET_TX_CATEGORY
+    return candidate
 
 
 class InsufficientWalletBalance(Exception):
@@ -204,7 +220,7 @@ async def debit_for_evaluation(
                     balance_before=balance_before,
                     balance_after=balance_after,
                     label=label,
-                    category=WALLET_TX_CATEGORY,
+                    category=normalize_wallet_category(WALLET_TX_CATEGORY),
                     item_id=client_transaction_id,
                     note=note,
                     status="completed",
@@ -285,7 +301,7 @@ async def refund_evaluation_debit(
                     balance_before=balance_before,
                     balance_after=balance_after,
                     label="Instamark evaluation refund",
-                    category=WALLET_TX_CATEGORY,
+                    category=normalize_wallet_category(WALLET_TX_CATEGORY),
                     item_id=client_transaction_id,
                     note=refund_note,
                     status="completed",
