@@ -12,6 +12,10 @@ from app.core.logging_config import logger
 from app.db import session as db_session
 from app.models.user_wallet import UserWallet, WalletTransaction
 
+# YantraIAS wallet_transactions.category must be one of:
+# content, session, meet, wellness, subscription, other
+WALLET_TX_CATEGORY = "other"
+
 
 class InsufficientWalletBalance(Exception):
     def __init__(self, balance: float, required: float):
@@ -200,7 +204,7 @@ async def debit_for_evaluation(
                     balance_before=balance_before,
                     balance_after=balance_after,
                     label=label,
-                    category="instamark",
+                    category=WALLET_TX_CATEGORY,
                     item_id=client_transaction_id,
                     note=note,
                     status="completed",
@@ -249,7 +253,8 @@ async def refund_evaluation_debit(
                         WalletTransaction.user_id == user_id,
                         WalletTransaction.item_id == client_transaction_id,
                         WalletTransaction.type == "credit",
-                        WalletTransaction.category == "instamark",
+                        WalletTransaction.category == WALLET_TX_CATEGORY,
+                        WalletTransaction.label == "Instamark evaluation refund",
                         WalletTransaction.status == "completed",
                     )
                 )
@@ -280,7 +285,7 @@ async def refund_evaluation_debit(
                     balance_before=balance_before,
                     balance_after=balance_after,
                     label="Instamark evaluation refund",
-                    category="instamark",
+                    category=WALLET_TX_CATEGORY,
                     item_id=client_transaction_id,
                     note=refund_note,
                     status="completed",
