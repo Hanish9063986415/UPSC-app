@@ -44,7 +44,8 @@ export function useInstamarkWallet(userId) {
     loading,
     error,
     refreshWallet,
-    balanceInr: wallet?.balance_inr ?? null,
+    balanceInr: wallet?.balance_inr ?? wallet?.credits ?? null,
+    credits: wallet?.credits ?? wallet?.balance_inr ?? null,
     ratePerPageInr: wallet?.rate_per_page_inr ?? null,
     walletEnabled: Boolean(wallet?.wallet_enabled),
   };

@@ -17,8 +17,10 @@ from app.services.evaluation_pipeline import get_evaluation_pipeline
 from app.services.evaluation_storage_service import save_instamark_evaluation
 from app.services.wallet_service import (
     InsufficientWalletBalance,
+    assert_sufficient_balance,
     calculate_evaluation_amount,
     debit_for_evaluation,
+    insufficient_wallet_message,
     refund_evaluation_debit,
 )
 from app.utils.json_utils import create_sse_event
@@ -234,10 +236,7 @@ async def evaluate_pdf_stream(
                 create_sse_event(
                     "error",
                     {
-                        "message": (
-                            f"Insufficient wallet balance. You have ₹{e.balance:.2f} "
-                            f"but need ₹{e.required:.2f} for this evaluation."
-                        ),
+                        "message": insufficient_wallet_message(e.balance, e.required),
                         "code": "insufficient_wallet",
                         "balance_inr": e.balance,
                         "required_inr": e.required,
@@ -485,6 +484,20 @@ async def evaluate_pdf_streaming(
 
     page_count_int = int(page_count) if page_count and page_count.strip().isdigit() else None
     amount_value = float(amount_inr) if amount_inr and amount_inr.strip() else None
+
+    if database_enabled() and resolved_user_id and page_count_int and page_count_int > 0:
+        try:
+            await assert_sufficient_balance(resolved_user_id, page_count_int)
+        except InsufficientWalletBalance as e:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "message": insufficient_wallet_message(e.balance, e.required),
+                    "code": "insufficient_wallet",
+                    "balance_inr": e.balance,
+                    "required_inr": e.required,
+                },
+            ) from e
 
     async def guarded_stream():
         try:

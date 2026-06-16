@@ -1,16 +1,16 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.config.settings import get_settings
 from app.core.logging_config import logger
 from app.db import session as db_session
-from app.models.instamark_wallet import InstamarkWallet, InstamarkWalletLedger
+from app.models.user_wallet import UserWallet, WalletTransaction
 
 
 class InsufficientWalletBalance(Exception):
@@ -28,19 +28,44 @@ class WalletDebitResult:
     rate_per_page_inr: float
 
 
-def _quantize_inr(value: float | Decimal) -> Decimal:
-    return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+def _parse_user_id(yantra_user_id: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(str(yantra_user_id).strip())
+    except (ValueError, AttributeError) as exc:
+        raise ValueError(f"Invalid YantraIAS user id: {yantra_user_id!r}") from exc
 
 
-def calculate_evaluation_amount(page_count: int, rate_per_page: float | None = None) -> float:
+def calculate_evaluation_amount(page_count: int, rate_per_page: float | None = None) -> int:
     settings = get_settings()
-    rate = float(rate_per_page if rate_per_page is not None else settings.instamark_rate_per_page_inr)
+    rate = int(rate_per_page if rate_per_page is not None else settings.instamark_rate_per_page_inr)
     pages = max(int(page_count or 0), 0)
-    return float(_quantize_inr(Decimal(pages) * Decimal(str(rate))))
+    return pages * rate
 
 
 def _get_session_factory():
     return db_session._session_factory
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def insufficient_wallet_message(balance: float, required: float) -> str:
+    return (
+        f"Insufficient wallet balance. This evaluation costs ₹{int(required)} "
+        f"but your wallet has ₹{int(balance)}. "
+        "Please recharge your YantraIAS wallet and try again."
+    )
+
+
+async def assert_sufficient_balance(yantra_user_id: str, page_count: int) -> int:
+    """Raise InsufficientWalletBalance if credits are too low for this evaluation."""
+    required = calculate_evaluation_amount(page_count)
+    summary = await get_wallet_summary(yantra_user_id)
+    credits = int(summary.get("credits") or 0)
+    if credits < required:
+        raise InsufficientWalletBalance(float(credits), float(required))
+    return required
 
 
 async def get_wallet_summary(yantra_user_id: str) -> dict[str, Any]:
@@ -51,26 +76,54 @@ async def get_wallet_summary(yantra_user_id: str) -> dict[str, Any]:
     if not db_session.database_enabled() or factory is None:
         return {
             "yantra_user_id": yantra_user_id,
+            "credits": None,
             "balance_inr": None,
             "rate_per_page_inr": rate,
             "wallet_enabled": False,
         }
 
+    try:
+        user_id = _parse_user_id(yantra_user_id)
+    except ValueError:
+        return {
+            "yantra_user_id": yantra_user_id,
+            "credits": None,
+            "balance_inr": None,
+            "rate_per_page_inr": rate,
+            "wallet_enabled": False,
+            "error": "invalid_user_id",
+        }
+
     async with factory() as session:
-        wallet = await session.get(InstamarkWallet, yantra_user_id)
-        if wallet is None:
-            wallet = InstamarkWallet(yantra_user_id=yantra_user_id, balance_inr=0)
-            session.add(wallet)
-            await session.commit()
-            await session.refresh(wallet)
+        wallet = await session.get(UserWallet, user_id)
+        credits = int(wallet.balance) if wallet is not None else 0
+        updated_at = wallet.updated_at.isoformat() if wallet and wallet.updated_at else None
 
         return {
             "yantra_user_id": yantra_user_id,
-            "balance_inr": float(wallet.balance_inr or 0),
+            "credits": credits,
+            "balance_inr": float(credits),
             "rate_per_page_inr": rate,
             "wallet_enabled": True,
-            "updated_at": wallet.updated_at.isoformat() if wallet.updated_at else None,
+            "updated_at": updated_at,
         }
+
+
+async def _find_existing_debit(
+    session,
+    *,
+    user_id: uuid.UUID,
+    client_transaction_id: str,
+) -> WalletTransaction | None:
+    result = await session.execute(
+        select(WalletTransaction).where(
+            WalletTransaction.user_id == user_id,
+            WalletTransaction.item_id == client_transaction_id,
+            WalletTransaction.type == "debit",
+            WalletTransaction.status == "completed",
+        )
+    )
+    return result.scalar_one_or_none()
 
 
 async def debit_for_evaluation(
@@ -83,7 +136,7 @@ async def debit_for_evaluation(
     settings = get_settings()
     rate = float(settings.instamark_rate_per_page_inr)
     expected = calculate_evaluation_amount(page_count, rate)
-    amount = float(_quantize_inr(amount_inr))
+    amount = int(round(amount_inr))
 
     if amount != expected:
         raise ValueError(
@@ -94,39 +147,63 @@ async def debit_for_evaluation(
     if not db_session.database_enabled() or factory is None:
         return WalletDebitResult(
             balance_inr=0,
-            amount_inr=amount,
+            amount_inr=float(amount),
             page_count=page_count,
             rate_per_page_inr=rate,
         )
 
+    user_id = _parse_user_id(yantra_user_id)
+    label = f"Instamark evaluation — {page_count} page{'s' if page_count != 1 else ''}"
+
     async with factory() as session:
         async with session.begin():
+            if client_transaction_id:
+                existing = await _find_existing_debit(
+                    session,
+                    user_id=user_id,
+                    client_transaction_id=client_transaction_id,
+                )
+                if existing is not None:
+                    wallet = await session.get(UserWallet, user_id)
+                    balance = int(wallet.balance) if wallet is not None else existing.balance_after
+                    return WalletDebitResult(
+                        balance_inr=float(balance),
+                        amount_inr=float(amount),
+                        page_count=page_count,
+                        rate_per_page_inr=rate,
+                    )
+
             result = await session.execute(
-                select(InstamarkWallet)
-                .where(InstamarkWallet.yantra_user_id == yantra_user_id)
-                .with_for_update()
+                select(UserWallet).where(UserWallet.user_id == user_id).with_for_update()
             )
             wallet = result.scalar_one_or_none()
             if wallet is None:
-                wallet = InstamarkWallet(yantra_user_id=yantra_user_id, balance_inr=0)
-                session.add(wallet)
-                await session.flush()
+                raise InsufficientWalletBalance(0, float(amount))
 
-            balance = _quantize_inr(wallet.balance_inr or 0)
-            debit = _quantize_inr(amount)
+            balance_before = int(wallet.balance)
+            if balance_before < amount:
+                raise InsufficientWalletBalance(float(balance_before), float(amount))
 
-            if balance < debit:
-                raise InsufficientWalletBalance(float(balance), float(debit))
+            balance_after = balance_before - amount
+            wallet.balance = balance_after
+            wallet.updated_at = _utcnow()
 
-            wallet.balance_inr = float(balance - debit)
+            note = (
+                f"Instamark evaluation: {page_count} pages @ ₹{int(rate)}/page — "
+                f"₹{amount} debited (₹{balance_before} → ₹{balance_after})."
+            )
             session.add(
-                InstamarkWalletLedger(
-                    yantra_user_id=yantra_user_id,
-                    amount_inr=float(-debit),
-                    entry_type="debit",
-                    page_count=page_count,
-                    client_transaction_id=client_transaction_id,
-                    note=f"Instamark evaluation ({page_count} pages @ ₹{rate}/page)",
+                WalletTransaction(
+                    user_id=user_id,
+                    type="debit",
+                    amount=amount,
+                    balance_before=balance_before,
+                    balance_after=balance_after,
+                    label=label,
+                    category="instamark",
+                    item_id=client_transaction_id,
+                    note=note,
+                    status="completed",
                 )
             )
 
@@ -136,12 +213,12 @@ async def debit_for_evaluation(
         amount,
         page_count,
         client_transaction_id or "-",
-        wallet.balance_inr,
+        balance_after,
     )
 
     return WalletDebitResult(
-        balance_inr=float(wallet.balance_inr),
-        amount_inr=amount,
+        balance_inr=float(balance_after),
+        amount_inr=float(amount),
         page_count=page_count,
         rate_per_page_inr=rate,
     )
@@ -152,37 +229,61 @@ async def refund_evaluation_debit(
     yantra_user_id: str,
     amount_inr: float,
     client_transaction_id: Optional[str] = None,
-    note: str = "Evaluation failed — refund",
+    note: str = "Instamark evaluation failed — refund",
 ) -> Optional[float]:
     factory = _get_session_factory()
     if not db_session.database_enabled() or factory is None:
         return None
 
-    amount = float(_quantize_inr(amount_inr))
+    amount = int(round(amount_inr))
     if amount <= 0:
         return None
 
+    user_id = _parse_user_id(yantra_user_id)
+
     async with factory() as session:
         async with session.begin():
+            if client_transaction_id:
+                existing_refund = await session.execute(
+                    select(WalletTransaction).where(
+                        WalletTransaction.user_id == user_id,
+                        WalletTransaction.item_id == client_transaction_id,
+                        WalletTransaction.type == "credit",
+                        WalletTransaction.category == "instamark",
+                        WalletTransaction.status == "completed",
+                    )
+                )
+                if existing_refund.scalar_one_or_none() is not None:
+                    wallet = await session.get(UserWallet, user_id)
+                    return float(wallet.balance) if wallet is not None else None
+
             result = await session.execute(
-                select(InstamarkWallet)
-                .where(InstamarkWallet.yantra_user_id == yantra_user_id)
-                .with_for_update()
+                select(UserWallet).where(UserWallet.user_id == user_id).with_for_update()
             )
             wallet = result.scalar_one_or_none()
             if wallet is None:
-                wallet = InstamarkWallet(yantra_user_id=yantra_user_id, balance_inr=0)
-                session.add(wallet)
-                await session.flush()
+                return None
 
-            wallet.balance_inr = float(_quantize_inr(wallet.balance_inr or 0) + _quantize_inr(amount))
+            balance_before = int(wallet.balance)
+            balance_after = balance_before + amount
+            wallet.balance = balance_after
+            wallet.updated_at = _utcnow()
+
+            refund_note = (
+                f"{note} — ₹{amount} credited (₹{balance_before} → ₹{balance_after})."
+            )
             session.add(
-                InstamarkWalletLedger(
-                    yantra_user_id=yantra_user_id,
-                    amount_inr=amount,
-                    entry_type="refund",
-                    client_transaction_id=client_transaction_id,
-                    note=note,
+                WalletTransaction(
+                    user_id=user_id,
+                    type="credit",
+                    amount=amount,
+                    balance_before=balance_before,
+                    balance_after=balance_after,
+                    label="Instamark evaluation refund",
+                    category="instamark",
+                    item_id=client_transaction_id,
+                    note=refund_note,
+                    status="completed",
                 )
             )
 
@@ -191,6 +292,6 @@ async def refund_evaluation_debit(
         yantra_user_id,
         amount,
         client_transaction_id or "-",
-        wallet.balance_inr,
+        balance_after,
     )
-    return float(wallet.balance_inr)
+    return float(balance_after)

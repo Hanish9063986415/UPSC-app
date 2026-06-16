@@ -47,9 +47,15 @@ export function getInstamarkSerialMap(transactions) {
   return new Map(chronological.map((tx, index) => [tx.id, index + 1]));
 }
 
-export function addInstamarkTransaction({ fileName, pageCount, amount, yantraUserId = getYantraUserId() }) {
+export function addInstamarkTransaction({
+  id,
+  fileName,
+  pageCount,
+  amount,
+  yantraUserId = getYantraUserId()
+}) {
   const entry = {
-    id: crypto.randomUUID(),
+    id: id || crypto.randomUUID(),
     service: INSTAMARK_SERVICE,
     yantraUserId: yantraUserId || null,
     fileName: fileName || "Answer sheet.pdf",

@@ -1,4 +1,4 @@
 from app.models.instamark_evaluation import InstamarkEvaluation
-from app.models.instamark_wallet import InstamarkWallet, InstamarkWalletLedger
+from app.models.user_wallet import UserWallet, WalletTransaction
 
-__all__ = ["InstamarkEvaluation", "InstamarkWallet", "InstamarkWalletLedger"]
+__all__ = ["InstamarkEvaluation", "UserWallet", "WalletTransaction"]

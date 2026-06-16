@@ -1,7 +1,11 @@
 import { API_BASE_URL, fetchInstamarkEvaluations, getYantraAuthHeaders } from "./api";
-import { removeInstamarkTransaction, updateInstamarkTransaction, loadInstamarkTransactions, extractEvaluationSummary } from "./instamarkTransactions";
+import { removeInstamarkTransaction, updateInstamarkTransaction, loadInstamarkTransactions, extractEvaluationSummary, addInstamarkTransaction } from "./instamarkTransactions";
 import { saveTransactionAnalysis } from "./instamarkTransactionAssets";
 import { notifyWalletChanged } from "./walletEvents";
+import {
+  buildInsufficientWalletMessage,
+  parseInsufficientWalletPayload,
+} from "./walletMessages";
 
 const IN_FLIGHT_KEY = "instamark-evaluation-in-flight";
 const POLL_MS = 8000;
@@ -89,7 +93,7 @@ class EvaluationRunner {
     this.listeners.forEach((fn) => fn(this.job));
   }
 
-  async start({ formData, transactionId, fileName }) {
+  async start({ formData, transactionId, fileName, pageCount, amount, yantraUserId }) {
     if (this.job?.status === "running") {
       return this.job;
     }
@@ -102,13 +106,14 @@ class EvaluationRunner {
       questions: [],
       summary: null,
       error: null,
+      insufficientWallet: false,
+      walletDebited: false,
       startedAt: Date.now(),
       disconnected: false,
       userInitiated: true
     };
 
     this.job = job;
-    writeInFlight({ transactionId, fileName, startedAt: job.startedAt });
     this.notify();
 
     try {
@@ -118,8 +123,38 @@ class EvaluationRunner {
         body: formData
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error(`Failed: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        const insufficient = parseInsufficientWalletPayload(payload);
+
+        if (insufficient) {
+          job.status = "error";
+          job.insufficientWallet = true;
+          job.error = insufficient.message;
+          this.notify();
+          return job;
+        }
+
+        const detail = payload?.detail;
+        const message =
+          typeof detail === "string"
+            ? detail
+            : detail?.message || `Failed: ${response.status} ${response.statusText}`;
+        throw new Error(message);
+      }
+
+      addInstamarkTransaction({
+        id: transactionId,
+        fileName,
+        pageCount,
+        amount,
+        yantraUserId
+      });
+      writeInFlight({ transactionId, fileName, startedAt: job.startedAt });
+      this.notify();
+
+      if (!response.body) {
+        throw new Error("Evaluation stream unavailable.");
       }
 
       const reader = response.body.getReader();
@@ -184,13 +219,24 @@ class EvaluationRunner {
     } else if (type === "question_complete" || type === "question_error") {
       job.questions = [...job.questions, payload];
     } else if (type === "wallet_debit") {
+      job.walletDebited = true;
       job.walletBalance = payload.balance_inr ?? null;
       notifyWalletChanged();
     } else if (type === "final_summary") {
       applyFinalSummary(job, payload, fileName);
     } else if (type === "error") {
       job.status = "error";
-      job.error = payload.message || "Evaluation failed";
+      if (payload.code === "insufficient_wallet") {
+        job.insufficientWallet = true;
+        job.error =
+          payload.message ||
+          buildInsufficientWalletMessage({
+            balance: payload.balance_inr,
+            required: payload.required_inr,
+          });
+      } else {
+        job.error = payload.message || "Evaluation failed";
+      }
       removeInstamarkTransaction(job.transactionId);
       writeInFlight(null);
       this.stopPolling();

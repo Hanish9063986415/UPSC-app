@@ -10,13 +10,13 @@ import { useYantraUser } from "./hooks/useYantraUser";
 import { useInstamarkWallet } from "./hooks/useInstamarkWallet";
 import { calculateEvaluationPrice, formatInr, PRICE_PER_PAGE_INR } from "./lib/pdfPricing";
 import {
-  addInstamarkTransaction,
   getVisibleInstamarkTransactions,
   loadInstamarkTransactions,
 } from "./lib/instamarkTransactions";
 import { evaluationRunner } from "./lib/evaluationRunner";
 import { checkApiHealth, formatFetchError, getYantraUserId } from "./lib/api";
 import { notifyWalletChanged } from "./lib/walletEvents";
+import { buildInsufficientWalletMessage, YANTRA_WALLET_URL } from "./lib/walletMessages";
 
 function Dashboard() {
   const { userId, isSignedIn } = useYantraUser();
@@ -94,7 +94,7 @@ function Dashboard() {
       setBusy(job.status === "running" || job.status === "background");
 
       if (job.status === "running") {
-        setStatus("Evaluating…");
+        setStatus(job.walletDebited ? "Evaluating…" : "Verifying wallet balance…");
       } else if (job.status === "background") {
         setStatus(
           "Evaluating in background — you can leave this page. Results will appear when ready."
@@ -111,8 +111,10 @@ function Dashboard() {
         refreshWallet();
         notifyWalletChanged();
       } else if (job.status === "error") {
-        setStatus(`Error: ${job.error || "Evaluation failed"}`);
-        refreshInstamarkTransactions();
+        setStatus(job.insufficientWallet ? job.error || "Insufficient wallet balance." : `Error: ${job.error || "Evaluation failed"}`);
+        if (!job.insufficientWallet) {
+          refreshInstamarkTransactions();
+        }
         refreshWallet();
         notifyWalletChanged();
       }
@@ -205,10 +207,16 @@ function Dashboard() {
       return "Sign in with your YantraIAS account to use wallet credits.";
     }
     if (insufficientWallet) {
-      return `Insufficient wallet balance. You have ${formatInr(balanceInr)} but need ${formatInr(pdfMeta.totalPrice)}.`;
+      return buildInsufficientWalletMessage({
+        balance: balanceInr,
+        required: pdfMeta.totalPrice,
+      });
     }
     return "";
   }, [walletEnabled, isSignedIn, insufficientWallet, balanceInr, pdfMeta.totalPrice]);
+
+  const showRechargeCallout =
+    walletEnabled && isSignedIn && insufficientWallet && pdfMeta.totalPrice != null;
 
   const handleEvaluate = async (event) => {
     event.preventDefault();
@@ -220,7 +228,10 @@ function Dashboard() {
     }
 
     if (insufficientWallet) {
-      setStatus(`Error: ${submitBlockedReason}`);
+      setStatus(buildInsufficientWalletMessage({
+        balance: balanceInr,
+        required: pdfMeta.totalPrice,
+      }));
       return;
     }
 
@@ -231,20 +242,14 @@ function Dashboard() {
       return;
     }
 
-    setStatus("Evaluating…");
+    setStatus(walletEnabled ? "Verifying wallet balance…" : "Evaluating…");
     setQuestions([]);
     setSummary(null);
     setActiveQuestionNumber(null);
 
-    const transactionId = addInstamarkTransaction({
-      fileName: file.name,
-      pageCount: pdfMeta.pageCount,
-      amount: pdfMeta.totalPrice,
-      yantraUserId: getYantraUserId()
-    });
+    const transactionId = crypto.randomUUID();
     activeTransactionIdRef.current = transactionId;
     evaluationStartedAtRef.current = Date.now();
-    refreshInstamarkTransactions();
 
     const formData = new FormData();
     formData.append("file", file);
@@ -260,8 +265,13 @@ function Dashboard() {
     await evaluationRunner.start({
       formData,
       transactionId,
-      fileName: file.name
+      fileName: file.name,
+      pageCount: pdfMeta.pageCount,
+      amount: pdfMeta.totalPrice,
+      yantraUserId
     });
+
+    refreshInstamarkTransactions();
 
     activeTransactionIdRef.current = null;
     evaluationStartedAtRef.current = null;
@@ -366,6 +376,19 @@ function Dashboard() {
                         </>
                       )}
                     </div>
+                    {showRechargeCallout && (
+                      <div className="wallet-recharge-callout" role="alert">
+                        <p>{submitBlockedReason}</p>
+                        <a
+                          className="btn btn-secondary wallet-recharge-btn"
+                          href={YANTRA_WALLET_URL}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Recharge wallet on YantraIAS
+                        </a>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -379,20 +402,33 @@ function Dashboard() {
                   : canSubmit && pdfMeta.totalPrice != null
                     ? `Start evaluation · ${formatInr(pdfMeta.totalPrice)}`
                     : insufficientWallet
-                      ? "Insufficient wallet balance"
+                      ? "Recharge wallet to continue"
                       : walletEnabled && !isSignedIn
                         ? "Sign in to evaluate"
                         : "Start evaluation"}
             </button>
-            {submitBlockedReason && !busy && file && pdfMeta.pageCount > 0 && (
+            {submitBlockedReason && !busy && file && pdfMeta.pageCount > 0 && !showRechargeCallout && (
               <p className="workspace-upload-error workspace-wallet-note" role="alert">
                 {submitBlockedReason}
               </p>
             )}
-            {statusIsError && !showEvaluationPanels && status !== "Idle" && (
+            {statusIsError && !showEvaluationPanels && status !== "Idle" && !status.startsWith("Insufficient wallet") && (
               <p className="workspace-upload-error" role="alert">
                 {status}
               </p>
+            )}
+            {status.startsWith("Insufficient wallet") && !busy && (
+              <div className="wallet-recharge-callout wallet-recharge-callout--inline" role="alert">
+                <p>{status}</p>
+                <a
+                  className="btn btn-secondary wallet-recharge-btn"
+                  href={YANTRA_WALLET_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Recharge wallet on YantraIAS
+                </a>
+              </div>
             )}
           </form>
       </section>

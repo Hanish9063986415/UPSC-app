@@ -1,4 +1,5 @@
--- Instamark wallet tables (SQLAlchemy / Alembic-free deploys)
+-- DEPRECATED: Instamark now uses YantraIAS public.user_wallets + wallet_transactions.
+-- Kept for reference only; do not run on new deployments.
 
 CREATE TABLE IF NOT EXISTS instamark_wallets (
     yantra_user_id VARCHAR(255) PRIMARY KEY,
