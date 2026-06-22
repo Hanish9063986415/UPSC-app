@@ -33,6 +33,7 @@ function Dashboard() {
   const [questions, setQuestions] = useState([]);
   const [summary, setSummary] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [evaluationAttempted, setEvaluationAttempted] = useState(false);
   const [activeQuestionNumber, setActiveQuestionNumber] = useState(null);
   const [instamarkTransactions, setInstamarkTransactions] = useState(() =>
     loadInstamarkTransactions()
@@ -82,6 +83,18 @@ function Dashboard() {
   const showEvaluationPanels = busy || questions.length > 0;
   const evaluationQuestionTotal =
     questions.length > 0 ? questions[questions.length - 1]?.total ?? questions.length : null;
+
+  useEffect(() => {
+    if (!isEvaluating) return undefined;
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isEvaluating]);
 
   useEffect(() => {
     evaluationRunner.syncPendingEvaluations(refreshInstamarkTransactions);
@@ -166,6 +179,11 @@ function Dashboard() {
     const selected = event.target.files?.[0] || null;
     setFile(selected);
     setPdfMeta({ pageCount: null, totalPrice: null, loading: false, error: "" });
+    setQuestions([]);
+    setSummary(null);
+    setActiveQuestionNumber(null);
+    setStatus("Idle");
+    setEvaluationAttempted(false);
 
     if (!selected) return;
 
@@ -216,13 +234,17 @@ function Dashboard() {
   }, [walletEnabled, isSignedIn, insufficientWallet, balanceInr, pdfMeta.totalPrice]);
 
   const showRechargeCallout =
+    !evaluationAttempted &&
     !busy &&
+    !isComplete &&
+    !isEvaluating &&
     walletEnabled &&
     isSignedIn &&
     insufficientWallet &&
     pdfMeta.totalPrice != null;
 
-  const showWalletPricingDetails = !busy;
+  const showWalletPricingDetails =
+    !evaluationAttempted && !busy && !isComplete && !isEvaluating;
 
   const handleEvaluate = async (event) => {
     event.preventDefault();
@@ -252,6 +274,7 @@ function Dashboard() {
     setQuestions([]);
     setSummary(null);
     setActiveQuestionNumber(null);
+    setEvaluationAttempted(true);
 
     const transactionId = crypto.randomUUID();
     activeTransactionIdRef.current = transactionId;
@@ -413,7 +436,13 @@ function Dashboard() {
                         ? "Sign in to evaluate"
                         : "Start evaluation"}
             </button>
-            {submitBlockedReason && !busy && file && pdfMeta.pageCount > 0 && !showRechargeCallout && (
+            {submitBlockedReason &&
+              !evaluationAttempted &&
+              !busy &&
+              !isComplete &&
+              file &&
+              pdfMeta.pageCount > 0 &&
+              !showRechargeCallout && (
               <p className="workspace-upload-error workspace-wallet-note" role="alert">
                 {submitBlockedReason}
               </p>
@@ -423,7 +452,11 @@ function Dashboard() {
                 {status}
               </p>
             )}
-            {status.startsWith("Insufficient wallet") && !busy && !isEvaluating && (
+            {status.startsWith("Insufficient wallet") &&
+              !evaluationAttempted &&
+              !busy &&
+              !isEvaluating &&
+              !isComplete && (
               <div className="wallet-recharge-callout wallet-recharge-callout--inline" role="alert">
                 <p>{status}</p>
                 <a

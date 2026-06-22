@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
+import { evaluationRunner } from "../lib/evaluationRunner";
 
 function updateCanGoBack() {
   return window.history.length > 1;
 }
 
+function isEvaluationActive(job) {
+  return job?.status === "running" || job?.status === "background";
+}
+
 export default function BackButton() {
   const [canGoBack, setCanGoBack] = useState(updateCanGoBack);
+  const [evaluationLocked, setEvaluationLocked] = useState(() =>
+    isEvaluationActive(evaluationRunner.getJob())
+  );
 
   useEffect(() => {
     const syncHistoryState = () => {
@@ -17,18 +25,32 @@ export default function BackButton() {
     return () => window.removeEventListener("popstate", syncHistoryState);
   }, []);
 
-  const handleBack = useCallback(() => {
-    window.history.back();
+  useEffect(() => {
+    return evaluationRunner.subscribe((job) => {
+      setEvaluationLocked(isEvaluationActive(job));
+    });
   }, []);
+
+  const handleBack = useCallback(() => {
+    if (evaluationLocked) return;
+    window.history.back();
+  }, [evaluationLocked]);
+
+  const disabled = evaluationLocked || !canGoBack;
+  const title = evaluationLocked
+    ? "Back is disabled while your evaluation is in progress"
+    : canGoBack
+      ? "Go back"
+      : "No previous page";
 
   return (
     <button
       type="button"
-      className="app-back-button"
+      className={`app-back-button${evaluationLocked ? " is-locked" : ""}`}
       onClick={handleBack}
-      disabled={!canGoBack}
-      aria-label="Go back"
-      title={canGoBack ? "Go back" : "No previous page"}
+      disabled={disabled}
+      aria-label={evaluationLocked ? "Back disabled during evaluation" : "Go back"}
+      title={title}
     >
       <svg
         className="app-back-button-icon"

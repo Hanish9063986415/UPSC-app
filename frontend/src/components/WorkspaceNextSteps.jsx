@@ -4,9 +4,6 @@ import { fetchInstamarkEvaluations, mapServerEvaluationToTransaction } from "../
 import { filterTransactionsByUser } from "../lib/instamarkTransactions";
 import { useYantraUser } from "../hooks/useYantraUser";
 
-const YANTRA_MENTOR_URL =
-  import.meta.env.VITE_YANTRA_MENTOR_URL || "https://www.yantraias.com/mentor";
-
 function mergeTransactions(localTransactions, serverTransactions, userId) {
   const byKey = new Map();
 
@@ -57,11 +54,10 @@ export default function WorkspaceNextSteps({ transactions = [] }) {
   );
 
   return (
-    <section className="glass-card workspace-next-steps" aria-label="YantraIAS next steps">
-      <h2 className="workspace-next-steps-title">Continue on YantraIAS</h2>
+    <section className="glass-card workspace-next-steps" aria-label="Evaluation history">
+      <h2 className="workspace-next-steps-title">Your evaluations</h2>
       <p className="muted workspace-next-steps-hint">
-        Review Instamark-only billing here, or connect with a mentor for deeper answer-writing
-        guidance.
+        Review Instamark billing and past evaluations for your account.
       </p>
 
       <div className="workspace-next-steps-list">
@@ -89,16 +85,6 @@ export default function WorkspaceNextSteps({ transactions = [] }) {
             accountLabel={displayName}
           />
         )}
-
-        <a
-          className="workspace-next-step-btn workspace-next-step-btn--primary"
-          href={YANTRA_MENTOR_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <span className="workspace-next-step-label">Evaluate with mentor</span>
-          <span className="workspace-next-step-desc">Connect with verified UPSC mentors</span>
-        </a>
       </div>
     </section>
   );
