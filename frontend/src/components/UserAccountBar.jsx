@@ -17,8 +17,7 @@ export default function UserAccountBar() {
   }
 
   return (
-    <header className="user-account-bar" aria-label="Signed-in YantraIAS account">
-      <div className="user-account-meta">
+    <div className="user-account-meta">
         <div className="user-account-pill" title={userId ? `Account ID: ${userId}` : undefined}>
           <span className="user-account-avatar" aria-hidden="true">
             {initial}
@@ -41,7 +40,6 @@ export default function UserAccountBar() {
             </strong>
           </div>
         )}
-      </div>
-    </header>
+    </div>
   );
 }
