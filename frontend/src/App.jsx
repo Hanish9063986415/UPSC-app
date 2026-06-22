@@ -216,7 +216,13 @@ function Dashboard() {
   }, [walletEnabled, isSignedIn, insufficientWallet, balanceInr, pdfMeta.totalPrice]);
 
   const showRechargeCallout =
-    walletEnabled && isSignedIn && insufficientWallet && pdfMeta.totalPrice != null;
+    !busy &&
+    walletEnabled &&
+    isSignedIn &&
+    insufficientWallet &&
+    pdfMeta.totalPrice != null;
+
+  const showWalletPricingDetails = !busy;
 
   const handleEvaluate = async (event) => {
     event.preventDefault();
@@ -359,7 +365,7 @@ function Dashboard() {
                         <span>Total amount</span>
                         <strong>{formatInr(pdfMeta.totalPrice)}</strong>
                       </div>
-                      {walletEnabled && isSignedIn && balanceInr != null && (
+                      {showWalletPricingDetails && walletEnabled && isSignedIn && balanceInr != null && (
                         <>
                           <div className="pdf-pricing-row">
                             <span>Wallet balance</span>
@@ -417,7 +423,7 @@ function Dashboard() {
                 {status}
               </p>
             )}
-            {status.startsWith("Insufficient wallet") && !busy && (
+            {status.startsWith("Insufficient wallet") && !busy && !isEvaluating && (
               <div className="wallet-recharge-callout wallet-recharge-callout--inline" role="alert">
                 <p>{status}</p>
                 <a
