@@ -105,6 +105,332 @@ body {
   flex: 1;
 }
 
+/* Instamark landing — richer YantraIAS presentation */
+.instamark-landing {
+  position: relative;
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 28px 20px 44px;
+  overflow: hidden;
+}
+
+.instamark-landing-glow {
+  position: absolute;
+  inset: -40px auto auto 50%;
+  width: min(720px, 120%);
+  height: 280px;
+  translate: -50% 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(243, 146, 0, 0.18), transparent 62%),
+    radial-gradient(circle at 70% 60%, rgba(33, 84, 181, 0.1), transparent 58%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.instamark-landing-hero,
+.instamark-landing-cards {
+  position: relative;
+  z-index: 1;
+}
+
+.instamark-landing-hero {
+  text-align: center;
+  max-width: 44rem;
+  margin: 0 auto 42px;
+  padding: 18px 12px 8px;
+  animation: instamark-landing-rise 0.55s ease-out both;
+}
+
+.instamark-landing-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 16px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(243, 146, 0, 0.28);
+  background: linear-gradient(180deg, #fffaf3 0%, #ffffff 100%);
+  color: #b45309;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.instamark-landing-title {
+  margin: 0 0 18px;
+  font-size: clamp(1.7rem, 4.4vw, 2.35rem);
+  font-weight: 800;
+  line-height: 1.22;
+  color: var(--blue-deep);
+  letter-spacing: -0.025em;
+}
+
+.instamark-landing-brand-accent {
+  display: inline-block;
+  margin-left: 0.28em;
+  font-weight: 800;
+  background: linear-gradient(135deg, #ffc266 0%, #f39200 45%, #e07a00 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.instamark-landing-subtitle {
+  margin: 0 auto 30px;
+  max-width: 40rem;
+  font-size: clamp(0.96rem, 2.2vw, 1.06rem);
+  line-height: 1.7;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.instamark-landing-cta {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 15px 44px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffb347 0%, #f39200 48%, #e08300 100%);
+  color: #ffffff;
+  font-size: 1.06rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  isolation: isolate;
+  overflow: hidden;
+  text-shadow: 0 1px 1px rgba(154, 52, 18, 0.25);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.38) inset,
+    0 12px 28px rgba(243, 146, 0, 0.38),
+    0 4px 12px rgba(192, 86, 0, 0.22);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+}
+
+.instamark-landing-cta-label {
+  position: relative;
+  z-index: 1;
+}
+
+.instamark-landing-cta::before {
+  content: "";
+  position: absolute;
+  inset: 1px 1px auto 1px;
+  height: 48%;
+  border-radius: 999px 999px 40% 40%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+
+.instamark-landing-cta:hover {
+  filter: saturate(1.06) brightness(1.04);
+  transform: translateY(-2px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.45) inset,
+    0 16px 34px rgba(243, 146, 0, 0.46),
+    0 8px 16px rgba(192, 86, 0, 0.28);
+}
+
+.instamark-landing-cta:active {
+  transform: translateY(1px);
+  filter: brightness(0.98);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 6px 14px rgba(243, 146, 0, 0.28),
+    0 2px 6px rgba(192, 86, 0, 0.2);
+}
+
+.instamark-landing-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: stretch;
+  animation: instamark-landing-rise 0.7s 0.08s ease-out both;
+}
+
+.instamark-landing-card {
+  background: #ffffff;
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  padding: 22px 20px 20px;
+  box-shadow:
+    0 12px 34px rgba(18, 42, 91, 0.07),
+    0 2px 8px rgba(18, 42, 91, 0.04);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.instamark-landing-card--orange {
+  border-left: 4px solid var(--accent);
+  background-image: linear-gradient(165deg, #ffffff 0%, #fffaf3 100%);
+}
+
+.instamark-landing-card--navy {
+  border-left: 4px solid var(--blue-deep);
+  background-image: linear-gradient(165deg, #ffffff 0%, #f7faff 100%);
+}
+
+.instamark-landing-card:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 18px 40px rgba(18, 42, 91, 0.1),
+    0 4px 12px rgba(18, 42, 91, 0.05);
+}
+
+.instamark-landing-card--orange:hover {
+  border-color: rgba(243, 146, 0, 0.35);
+}
+
+.instamark-landing-card--navy:hover {
+  border-color: rgba(18, 42, 91, 0.22);
+}
+
+.instamark-landing-card-title {
+  margin: 0 0 16px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--blue-deep);
+  letter-spacing: -0.01em;
+}
+
+.instamark-landing-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.instamark-landing-list li {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(232, 234, 239, 0.9);
+}
+
+.instamark-landing-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(180deg, #ffb347 0%, var(--accent) 100%);
+  box-shadow: 0 4px 10px rgba(243, 146, 0, 0.28);
+}
+
+.instamark-landing-card--navy .instamark-landing-step {
+  background: linear-gradient(180deg, #2a5cc4 0%, var(--blue-deep) 100%);
+  box-shadow: 0 4px 10px rgba(18, 42, 91, 0.28);
+}
+
+.instamark-landing-step-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.instamark-landing-step-copy strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.instamark-landing-step-copy span {
+  font-size: 0.86rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+@keyframes instamark-landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dashboard-page.is-landing {
+  padding-top: 8px;
+}
+
+.home-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.home-eval-panel {
+  width: min(960px, 100%);
+  margin: 0 auto 20px;
+}
+
+.home-eval-panel .workspace-upload-panel {
+  padding: 24px 24px 28px;
+}
+
+.home-transactions {
+  width: min(960px, 100%);
+  margin: 0 auto 24px;
+  border-left: 3px solid var(--accent);
+}
+
+.home-transactions .workspace-next-steps-title {
+  color: var(--blue-deep);
+}
+
+@media (max-width: 760px) {
+  .instamark-landing {
+    padding: 16px 14px 34px;
+  }
+
+  .instamark-landing-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .instamark-landing-cta {
+    width: min(100%, 320px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .instamark-landing-hero,
+  .instamark-landing-cards,
+  .instamark-landing-card,
+  .instamark-landing-cta {
+    animation: none;
+    transition: none;
+  }
+}
+
+
 .app-top-bar {
   position: sticky;
   top: 0;
@@ -960,35 +1286,35 @@ body {
   color: #153e75;
 }
 
-/* Rich PDF file picker */
+/* Rich PDF file picker — soft mint panel matching YantraIAS upload design */
 .file-upload-stack {
   width: 100%;
-  border: 2px dashed #fdba74;
-  border-radius: 16px;
+  border: 1.5px solid #b7e4c7;
+  border-radius: 18px;
   overflow: hidden;
-  background: #ffffff;
+  background: linear-gradient(180deg, #f7fcf9 0%, #ffffff 55%, #f3faf6 100%);
   box-shadow:
-    0 10px 32px rgba(243, 146, 0, 0.1),
-    0 2px 8px rgba(15, 23, 42, 0.04);
+    0 8px 28px rgba(16, 185, 129, 0.08),
+    0 1px 4px rgba(15, 23, 42, 0.04);
   transition:
     border-color 0.18s ease,
-    box-shadow 0.18s ease;
+    box-shadow 0.18s ease,
+    background 0.18s ease;
 }
 
 .file-upload-stack:hover,
 .file-upload-stack:focus-within {
-  border-color: #f39200;
-  border-style: solid;
+  border-color: #86efac;
   box-shadow:
-    0 12px 36px rgba(243, 146, 0, 0.14),
+    0 10px 32px rgba(16, 185, 129, 0.12),
     0 2px 8px rgba(15, 23, 42, 0.05);
 }
 
 .file-upload-stack.has-file {
   border-color: #86efac;
-  border-style: solid;
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 52%, #ecfdf5 100%);
   box-shadow:
-    0 10px 32px rgba(16, 185, 129, 0.1),
+    0 10px 32px rgba(16, 185, 129, 0.12),
     0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
@@ -1016,26 +1342,26 @@ label.file-upload-trigger {
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: clamp(112px, 18vw, 148px);
+  min-height: clamp(120px, 18vw, 150px);
   padding: 28px 32px;
   margin: 0;
   box-sizing: border-box;
   text-align: center;
   border: none;
   border-radius: 0;
-  background: linear-gradient(135deg, #fffaf3 0%, #fff7ed 45%, #ffffff 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  background: transparent;
+  box-shadow: none;
   cursor: pointer;
   transition: background 0.18s ease;
 }
 
 .file-upload-stack:hover label.file-upload-trigger,
 .file-upload-stack:focus-within label.file-upload-trigger {
-  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 40%, #ffffff 100%);
+  background: rgba(240, 253, 244, 0.45);
 }
 
 .file-upload-stack.has-file label.file-upload-trigger {
-  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 45%, #ffffff 100%);
+  background: transparent;
 }
 
 .file-upload-copy {
@@ -1052,9 +1378,9 @@ label.file-upload-trigger {
 .file-upload-copy strong {
   display: block;
   width: 100%;
-  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  font-size: clamp(1.08rem, 2vw, 1.28rem);
   font-weight: 800;
-  color: #0f172a;
+  color: var(--blue-deep);
   line-height: 1.35;
   text-align: center;
 }
@@ -1064,9 +1390,9 @@ label.file-upload-trigger {
   width: 100%;
   max-width: none;
   margin: 0 auto;
-  font-size: clamp(0.84rem, 1.6vw, 0.95rem);
-  font-weight: 600;
-  color: #64748b;
+  font-size: clamp(0.86rem, 1.6vw, 0.96rem);
+  font-weight: 500;
+  color: #5b6b7c;
   line-height: 1.55;
   text-align: center;
 }
@@ -1074,11 +1400,11 @@ label.file-upload-trigger {
 .file-upload-meta {
   display: block;
   width: 100%;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #94a3b8;
+  color: #8aa0b2;
   text-align: center;
 }
 
@@ -1090,7 +1416,7 @@ label.file-upload-trigger {
 
   label.file-upload-trigger {
     padding: 22px 16px;
-    min-height: 108px;
+    min-height: 112px;
   }
 }
 
@@ -1099,19 +1425,19 @@ label.file-upload-trigger {
   display: block;
   width: 100%;
   box-sizing: border-box;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   color: var(--text-muted);
   margin-top: 0;
 }
 
 .file-selected-name {
   padding: 14px 20px;
-  background: #f8fafc;
+  background: rgba(255, 255, 255, 0.72);
   border: none;
-  border-top: 1px dashed #dbe4f0;
+  border-top: 1px solid #c6ebd4;
   border-radius: 0;
   font-weight: 600;
-  color: #64748b;
+  color: #7a8b9a;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1119,9 +1445,9 @@ label.file-upload-trigger {
 }
 
 .file-selected-name.is-selected {
-  background: linear-gradient(180deg, #ecfdf5 0%, #f0fdf4 100%);
-  border-top: 1px solid #bbf7d0;
-  color: #166534;
+  background: linear-gradient(180deg, #f3fbf6 0%, #eefaf3 100%);
+  border-top: 1px solid #b7e4c7;
+  color: #2f9e5c;
   font-weight: 700;
 }
 

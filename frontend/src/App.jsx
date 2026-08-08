@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "./components/AppShell";
+import InstamarkLanding from "./components/InstamarkLanding";
 import QuestionResultCard from "./components/QuestionResultCard";
 import QuestionNavigator from "./components/QuestionNavigator";
 import PaperAnalyticsPanel from "./components/PaperAnalyticsPanel";
@@ -40,6 +41,7 @@ function Dashboard() {
   );
   const activeTransactionIdRef = useRef(null);
   const evaluationStartedAtRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const refreshInstamarkTransactions = () => {
     setInstamarkTransactions(loadInstamarkTransactions());
@@ -83,6 +85,7 @@ function Dashboard() {
   const showEvaluationPanels = busy || questions.length > 0;
   const evaluationQuestionTotal =
     questions.length > 0 ? questions[questions.length - 1]?.total ?? questions.length : null;
+  const showEvalPanel = Boolean(file) || busy || questions.length > 0 || isComplete;
 
   useEffect(() => {
     if (!isEvaluating) return undefined;
@@ -175,6 +178,14 @@ function Dashboard() {
     }
   }, [questions, activeQuestionNumber, busy]);
 
+  const handleStartEvaluateClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+      return;
+    }
+    document.getElementById("pdf-upload")?.click();
+  };
+
   const handleFileChange = async (event) => {
     const selected = event.target.files?.[0] || null;
     setFile(selected);
@@ -196,6 +207,12 @@ function Dashboard() {
         totalPrice: calculateEvaluationPrice(pageCount),
         loading: false,
         error: ""
+      });
+      window.requestAnimationFrame(() => {
+        document.getElementById("home-eval-panel")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
       });
     } catch (error) {
       setPdfMeta({
@@ -313,24 +330,25 @@ function Dashboard() {
     : "No file selected";
 
   return (
-    <div className="page dashboard-page">
-      <section className="workspace-shell glass-card">
-          <form onSubmit={handleEvaluate} className="workspace-upload-panel">
-            <div className="workspace-upload-intro">
-              <h1 className="workspace-upload-title">AI Answer Evaluation</h1>
-            </div>
+    <div className="page dashboard-page is-landing">
+      <InstamarkLanding onEvaluate={handleStartEvaluateClick} />
 
+      <input
+        ref={fileInputRef}
+        id="pdf-upload"
+        type="file"
+        accept=".pdf,application/pdf"
+        className="home-file-input"
+        onChange={handleFileChange}
+      />
+
+      {showEvalPanel && (
+        <section id="home-eval-panel" className="workspace-shell glass-card home-eval-panel">
+          <form onSubmit={handleEvaluate} className="workspace-upload-panel">
             <div className="workspace-upload-fields">
               <div className="workspace-field workspace-field-file">
                 <div className={`file-upload-stack${file ? " has-file" : ""}`}>
                   <div className={`file-upload-zone${file ? " has-file" : ""}`}>
-                    <input
-                      id="pdf-upload"
-                      type="file"
-                      accept=".pdf,application/pdf"
-                      className="file-upload-input"
-                      onChange={handleFileChange}
-                    />
                     <label htmlFor="pdf-upload" className="file-upload-trigger">
                       <span className="file-upload-copy">
                         <strong>{file ? "Change PDF file" : "Choose PDF file"}</strong>
@@ -470,7 +488,8 @@ function Dashboard() {
               </div>
             )}
           </form>
-      </section>
+        </section>
+      )}
 
       {questions.length > 0 && (
         <QuestionNavigator
@@ -525,7 +544,6 @@ function Dashboard() {
       )}
 
       <WorkspaceNextSteps transactions={visibleTransactions} />
-
     </div>
   );
 }

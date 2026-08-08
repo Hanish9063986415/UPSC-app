@@ -35,18 +35,17 @@ function mergeTransactions(localTransactions, serverTransactions, userId) {
 
 export default function WorkspaceNextSteps({ transactions = [] }) {
   const { userId, isSignedIn, displayName } = useYantraUser();
-  const [showTransactions, setShowTransactions] = useState(false);
   const [serverTransactions, setServerTransactions] = useState([]);
 
   useEffect(() => {
-    if (!showTransactions || !userId) {
+    if (!userId) {
       setServerTransactions([]);
       return;
     }
     fetchInstamarkEvaluations()
       .then((rows) => setServerTransactions(rows.map(mapServerEvaluationToTransaction)))
       .catch(() => setServerTransactions([]));
-  }, [showTransactions, transactions.length, userId]);
+  }, [transactions.length, userId]);
 
   const mergedTransactions = useMemo(
     () => mergeTransactions(transactions, serverTransactions, userId),
@@ -54,38 +53,18 @@ export default function WorkspaceNextSteps({ transactions = [] }) {
   );
 
   return (
-    <section className="glass-card workspace-next-steps" aria-label="Evaluation history">
-      <h2 className="workspace-next-steps-title">Your evaluations</h2>
+    <section className="glass-card workspace-next-steps home-transactions" aria-label="Previous transactions">
+      <h2 className="workspace-next-steps-title">Previous transactions</h2>
       <p className="muted workspace-next-steps-hint">
-        Review Instamark billing and past evaluations for your account.
+        Your Instamark evaluation history and billing for this account.
       </p>
 
-      <div className="workspace-next-steps-list">
-        <button
-          type="button"
-          className={`workspace-next-step-btn workspace-next-step-btn--secondary${
-            showTransactions ? " is-active" : ""
-          }`}
-          onClick={() => setShowTransactions((open) => !open)}
-          aria-expanded={showTransactions}
-        >
-          <span className="workspace-next-step-label">
-            {showTransactions ? "Hide transactions" : "View transactions"}
-          </span>
-          <span className="workspace-next-step-desc">
-            Instamark evaluations only · not full app wallet
-          </span>
-        </button>
-
-        {showTransactions && (
-          <InstamarkTransactionsPanel
-            transactions={mergedTransactions}
-            userId={userId}
-            isSignedIn={isSignedIn}
-            accountLabel={displayName}
-          />
-        )}
-      </div>
+      <InstamarkTransactionsPanel
+        transactions={mergedTransactions}
+        userId={userId}
+        isSignedIn={isSignedIn}
+        accountLabel={displayName}
+      />
     </section>
   );
 }
