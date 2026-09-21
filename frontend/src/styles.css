@@ -248,8 +248,10 @@ body {
 
 .instamark-landing-cards {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
+  max-width: 36rem;
+  margin: 0 auto;
   align-items: stretch;
   animation: instamark-landing-rise 0.7s 0.08s ease-out both;
 }
@@ -268,11 +270,6 @@ body {
     border-color 0.2s ease;
 }
 
-.instamark-landing-card--orange {
-  border-left: 4px solid var(--accent);
-  background-image: linear-gradient(165deg, #ffffff 0%, #fffaf3 100%);
-}
-
 .instamark-landing-card--navy {
   border-left: 4px solid var(--blue-deep);
   background-image: linear-gradient(165deg, #ffffff 0%, #f7faff 100%);
@@ -283,10 +280,6 @@ body {
   box-shadow:
     0 18px 40px rgba(18, 42, 91, 0.1),
     0 4px 12px rgba(18, 42, 91, 0.05);
-}
-
-.instamark-landing-card--orange:hover {
-  border-color: rgba(243, 146, 0, 0.35);
 }
 
 .instamark-landing-card--navy:hover {
@@ -431,6 +424,222 @@ body {
 }
 
 
+/* YantraIAS site header — matches main YantraIAS chrome (standalone Instamark only) */
+.yantra-site-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #ffffff;
+  border-bottom: 1px solid #eceef2;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+}
+
+.yantra-site-header-glow {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 42% 120% at 18% 50%, rgba(243, 146, 0, 0.07), transparent 58%),
+    radial-gradient(ellipse 50% 100% at 55% 0%, rgba(33, 84, 181, 0.05), transparent 62%);
+  z-index: 0;
+}
+
+.yantra-site-header-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 8px 24px;
+  min-height: 0;
+}
+
+.yantra-site-header-start {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.yantra-site-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 10px;
+  padding: 2px 4px;
+  transition: opacity 0.18s ease;
+}
+
+.yantra-site-brand:hover {
+  opacity: 0.92;
+}
+
+.yantra-site-logo-mark {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+}
+
+.yantra-site-logo-img {
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.yantra-site-logo-img--full {
+  width: auto;
+  height: clamp(44px, 5.2vw, 58px);
+  max-width: min(400px, 58vw);
+}
+
+.yantra-site-brand-wordmark {
+  font-family: "Playfair Display", Georgia, "Times New Roman", serif;
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #2d3748;
+  white-space: nowrap;
+}
+
+.yantra-site-brand-accent-a {
+  color: #e8932f;
+}
+
+.yantra-site-nav {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.yantra-site-nav-list {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+
+.yantra-site-nav-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 12px 8px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1f376d;
+  text-decoration: none;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition:
+    color 0.18s ease,
+    background 0.18s ease;
+}
+
+.yantra-site-nav-link:hover {
+  color: var(--blue-deep);
+  background: rgba(236, 238, 242, 0.65);
+}
+
+.yantra-site-nav-link.is-current {
+  color: var(--blue-deep);
+  background: #f0f1f3;
+  font-weight: 700;
+}
+
+.yantra-site-nav-link.is-current::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 6px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.yantra-site-header-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.yantra-site-header-end .user-account-meta {
+  justify-content: flex-end;
+}
+
+.yantra-site-header-end .user-account-wallet {
+  min-width: 96px;
+  padding: 6px 10px;
+}
+
+.yantra-site-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.yantra-site-icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #4b5563;
+  text-decoration: none;
+  transition:
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.yantra-site-icon-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.yantra-site-icon-btn:hover {
+  color: var(--blue-deep);
+  border-color: #d1d5db;
+  box-shadow: 0 4px 14px rgba(18, 42, 91, 0.08);
+}
+
+.yantra-site-icon-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+  border: 2px solid #ffffff;
+}
+
 .app-top-bar {
   position: sticky;
   top: 0;
@@ -443,6 +652,10 @@ body {
   border-bottom: 1px solid var(--glass-border);
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(10px);
+}
+
+.app-top-bar--end {
+  justify-content: flex-end;
 }
 
 .app-back-button {
@@ -594,6 +807,34 @@ body {
   text-overflow: ellipsis;
 }
 
+@media (max-width: 1180px) {
+  .yantra-site-header-inner {
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    gap: 10px;
+    min-height: auto;
+  }
+
+  .yantra-site-nav {
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 0;
+  }
+
+  .yantra-site-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .yantra-site-nav-list {
+    justify-content: flex-start;
+    padding-bottom: 4px;
+  }
+}
+
 @media (max-width: 640px) {
   .app-top-bar {
     padding: 10px 14px;
@@ -605,6 +846,34 @@ body {
 
   .app-back-button {
     padding: 8px 10px;
+  }
+
+  .yantra-site-brand-wordmark {
+    font-size: 1rem;
+  }
+
+  .yantra-site-logo-mark {
+    width: 40px;
+    height: 40px;
+  }
+
+  .yantra-site-logo-img--full {
+    height: clamp(40px, 11vw, 48px);
+    max-width: min(320px, 84vw);
+  }
+
+  .yantra-site-nav-link {
+    padding: 7px 11px 9px;
+    font-size: 0.82rem;
+  }
+
+  .yantra-site-header-end .user-account-wallet-label {
+    display: none;
+  }
+
+  .yantra-site-icon-btn {
+    width: 38px;
+    height: 38px;
   }
 }
 
@@ -3927,8 +4196,19 @@ input[type="file"]::file-selector-button {
   gap: 6px;
 }
 
+.download-analysis-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .download-analysis-btn {
-  width: 100%;
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.download-analysis-btn--pdf {
+  flex: 0 1 auto;
 }
 
 .download-analysis-error {

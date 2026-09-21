@@ -19,41 +19,7 @@ export default function InstamarkLanding({ onEvaluate }) {
         </button>
       </section>
 
-      <section className="instamark-landing-cards" aria-label="How Instamark works">
-        <article className="instamark-landing-card instamark-landing-card--orange">
-          <h2 className="instamark-landing-card-title">How to Evaluate</h2>
-          <ol className="instamark-landing-list">
-            <li>
-              <span className="instamark-landing-step">1</span>
-              <div className="instamark-landing-step-copy">
-                <strong>Initiate</strong>
-                <span>Tap “Evaluate Answer Now”.</span>
-              </div>
-            </li>
-            <li>
-              <span className="instamark-landing-step">2</span>
-              <div className="instamark-landing-step-copy">
-                <strong>Upload</strong>
-                <span>Select PDF of your answer sheet.</span>
-              </div>
-            </li>
-            <li>
-              <span className="instamark-landing-step">3</span>
-              <div className="instamark-landing-step-copy">
-                <strong>Process</strong>
-                <span>Click “Start evaluation”.</span>
-              </div>
-            </li>
-            <li>
-              <span className="instamark-landing-step">4</span>
-              <div className="instamark-landing-step-copy">
-                <strong>Review</strong>
-                <span>Feedback appears below and in previous transactions.</span>
-              </div>
-            </li>
-          </ol>
-        </article>
-
+      <section className="instamark-landing-cards" aria-label="Evaluation instructions">
         <article className="instamark-landing-card instamark-landing-card--navy">
           <h2 className="instamark-landing-card-title">Important Instructions</h2>
           <ol className="instamark-landing-list">

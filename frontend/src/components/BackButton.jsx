@@ -9,7 +9,7 @@ function isEvaluationActive(job) {
   return job?.status === "running" || job?.status === "background";
 }
 
-export default function BackButton() {
+export function useBackNavigation() {
   const [canGoBack, setCanGoBack] = useState(updateCanGoBack);
   const [evaluationLocked, setEvaluationLocked] = useState(() =>
     isEvaluationActive(evaluationRunner.getJob())
@@ -31,6 +31,20 @@ export default function BackButton() {
     });
   }, []);
 
+  return {
+    canGoBack,
+    evaluationLocked,
+    showBackButton: canGoBack || evaluationLocked
+  };
+}
+
+export function useShowBackButton() {
+  return useBackNavigation().showBackButton;
+}
+
+export default function BackButton() {
+  const { canGoBack, evaluationLocked, showBackButton } = useBackNavigation();
+
   const handleBack = useCallback(() => {
     if (evaluationLocked) return;
     window.history.back();
@@ -42,6 +56,10 @@ export default function BackButton() {
     : canGoBack
       ? "Go back"
       : "No previous page";
+
+  if (!showBackButton) {
+    return null;
+  }
 
   return (
     <button
