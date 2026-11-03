@@ -19,6 +19,14 @@ ALLOWED_WALLET_TX_CATEGORIES = frozenset(
 )
 WALLET_TX_CATEGORY = "other"
 
+INSTAMARK_MAINTENANCE_MESSAGE = (
+    "Instamark is temporarily under maintenance. Please try again in a few minutes."
+)
+
+
+def instamark_maintenance_message() -> str:
+    return INSTAMARK_MAINTENANCE_MESSAGE
+
 
 def normalize_wallet_category(category: str | None = None) -> str:
     """Map Instamark debits to a category accepted by YantraIAS wallet_transactions."""
@@ -38,6 +46,57 @@ class InsufficientWalletBalance(Exception):
         self.balance = balance
         self.required = required
         super().__init__(f"Insufficient wallet balance: have {balance}, need {required}")
+
+
+class WalletBillingUnavailable(Exception):
+    """Wallet billing cannot run — evaluation must not start and no debit may occur."""
+
+    def __init__(self, user_message: str | None = None, *, log_detail: str | None = None):
+        self.user_message = user_message or instamark_maintenance_message()
+        if log_detail:
+            logger.error("Instamark billing unavailable: %s", log_detail)
+        super().__init__(self.user_message)
+
+
+def wallet_billing_configured() -> bool:
+    url = get_settings().database_url
+    return bool(url and str(url).strip())
+
+
+def wallet_billing_active() -> bool:
+    return wallet_billing_configured() and db_session.database_enabled()
+
+
+def instamark_wallet_required() -> bool:
+    """Production and any configured billing must use the wallet before evaluation."""
+    settings = get_settings()
+    return settings.environment == "production" or wallet_billing_configured()
+
+
+def is_instamark_operational() -> bool:
+    if not instamark_wallet_required():
+        return True
+    return wallet_billing_active()
+
+
+def ensure_instamark_operational() -> None:
+    if is_instamark_operational():
+        return
+    detail = (
+        f"billing_required={instamark_wallet_required()} "
+        f"billing_configured={wallet_billing_configured()} "
+        f"database_connected={db_session.database_enabled()}"
+    )
+    raise WalletBillingUnavailable(log_detail=detail)
+
+
+def ensure_wallet_billing_available() -> None:
+    """Backward-compatible alias for routes that only checked DB connectivity."""
+    ensure_instamark_operational()
+
+
+def maintenance_error_payload() -> dict[str, str]:
+    return {"message": instamark_maintenance_message(), "code": "maintenance"}
 
 
 @dataclass
@@ -100,6 +159,8 @@ async def get_wallet_summary(yantra_user_id: str) -> dict[str, Any]:
             "balance_inr": None,
             "rate_per_page_inr": rate,
             "wallet_enabled": False,
+            "billing_configured": wallet_billing_configured(),
+            "database_connected": False,
         }
 
     try:
@@ -125,6 +186,8 @@ async def get_wallet_summary(yantra_user_id: str) -> dict[str, Any]:
             "balance_inr": float(credits),
             "rate_per_page_inr": rate,
             "wallet_enabled": True,
+            "billing_configured": True,
+            "database_connected": True,
             "updated_at": updated_at,
         }
 
@@ -165,6 +228,10 @@ async def debit_for_evaluation(
 
     factory = _get_session_factory()
     if not db_session.database_enabled() or factory is None:
+        if instamark_wallet_required():
+            raise WalletBillingUnavailable(
+                log_detail="debit_for_evaluation called without an active database connection"
+            )
         return WalletDebitResult(
             balance_inr=0,
             amount_inr=float(amount),
@@ -242,6 +309,52 @@ async def debit_for_evaluation(
         page_count=page_count,
         rate_per_page_inr=rate,
     )
+
+
+async def get_evaluation_debit_status(
+    *,
+    yantra_user_id: str,
+    client_transaction_id: str,
+) -> dict[str, Any]:
+    """Return whether a completed Instamark debit exists for this client transaction id."""
+    ensure_wallet_billing_available()
+    user_id = _parse_user_id(yantra_user_id)
+    tx_id = (client_transaction_id or "").strip()
+    if not tx_id:
+        raise ValueError("client_transaction_id is required")
+
+    factory = _get_session_factory()
+    if factory is None:
+        raise WalletBillingUnavailable()
+
+    async with factory() as session:
+        debit = await _find_existing_debit(
+            session,
+            user_id=user_id,
+            client_transaction_id=tx_id,
+        )
+        wallet = await session.get(UserWallet, user_id)
+        balance = int(wallet.balance) if wallet is not None else None
+
+    if debit is None:
+        return {
+            "debited": False,
+            "client_transaction_id": tx_id,
+            "yantra_user_id": yantra_user_id,
+            "balance_inr": float(balance) if balance is not None else None,
+        }
+
+    return {
+        "debited": True,
+        "client_transaction_id": tx_id,
+        "yantra_user_id": yantra_user_id,
+        "amount_inr": float(debit.amount),
+        "balance_before_inr": float(debit.balance_before),
+        "balance_after_inr": float(debit.balance_after),
+        "balance_inr": float(balance) if balance is not None else float(debit.balance_after),
+        "debited_at": debit.created_at.isoformat() if debit.created_at else None,
+        "ledger_id": str(debit.id),
+    }
 
 
 async def refund_evaluation_debit(

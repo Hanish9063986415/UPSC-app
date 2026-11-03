@@ -211,6 +211,7 @@ ALLOWED_ORIGINS=https://upsc-app.vercel.app,https://www.yourdomain.com
 | `GEMINI_MODEL` | Auto | `models/gemini-2.5-flash` |
 | `FRONTEND_URL` | Yes | `https://upsc-app.vercel.app` |
 | `ALLOWED_ORIGINS` | Yes | `https://upsc-app.vercel.app` |
+| `DATABASE_URL` | **Yes (wallet debits)** | Supabase **session pooler** URI (port **5432**) |
 | `PYTHON_VERSION` | Auto | `3.12.8` |
 | `max_workers` | Auto | `8` |
 | `pdf_render_workers` | Auto | `8` |
@@ -225,7 +226,7 @@ ALLOWED_ORIGINS=https://upsc-app.vercel.app,https://www.yourdomain.com
 | `pdf_zoom_factor` | Auto | `2` |
 | `request_timeout` | Auto | `300` |
 
-Do **not** add `DATABASE_URL` — database is not used.
+Set **`DATABASE_URL`** to your Supabase Postgres URI so Instamark can debit **`public.user_wallets`** and write **`public.wallet_transactions`**. Without it, evaluations run but **no wallet charge** is applied. After deploy, open `BACKEND_URL/api/instamark/storage-status` — `database_enabled` must be `true`.
 
 ## Vercel (`frontend` root)
 
@@ -311,6 +312,7 @@ If logs show `Using Python version 3.14.3` and `pydantic-core` metadata failed:
 | Evaluation slower than 3 minutes | Add comma-separated `API_KEYS` (multiple Gemini keys); confirm `pdf_render_workers=8` and `max_concurrent_evals=4` |
 | `503` “processing other evaluations” | Another user’s PDF is running; wait and retry (expected under load) |
 | Health check fails | Set `API_KEY` on Render |
+| Wallet balance never drops | Set valid `DATABASE_URL` on Render; confirm `/api/instamark/storage-status` → `database_enabled: true`; verify debit via `/api/instamark/wallet/debit-status?client_transaction_id=…` |
 | Blank page on Vercel | Confirm Root Directory is `frontend` and Output is `dist` |
 
 ---

@@ -602,10 +602,8 @@ export function analysisHtmlDownloadFilename(sourceFileName) {
   return `upsc-analysis-${base}-${stamp}.html`;
 }
 
-export function downloadAnalysisHtml({ questions, summary, sourceFileName, mode = "auto" }) {
-  const html = buildAnalysisHtmlDocument({ questions, summary, sourceFileName, mode });
+export function downloadHtmlString(html, sourceFileName) {
   const filename = analysisHtmlDownloadFilename(sourceFileName);
-
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -616,6 +614,36 @@ export function downloadAnalysisHtml({ questions, summary, sourceFileName, mode 
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+/** Wait for React to paint results, then build the same HTML as the evaluation download. */
+export async function captureAnalysisHtmlDocument({
+  questions,
+  summary,
+  sourceFileName,
+  mode = "auto",
+}) {
+  if (mode === "built") {
+    return buildAnalysisHtml({ questions, summary, sourceFileName });
+  }
+
+  if (typeof document !== "undefined") {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const liveMarkup = cloneLiveEvaluationMarkup();
+      if (liveMarkup) {
+        return wrapLiveEvaluationHtml(liveMarkup, sourceFileName);
+      }
+    }
+  }
+
+  return buildAnalysisHtml({ questions, summary, sourceFileName });
+}
+
+export function downloadAnalysisHtml({ questions, summary, sourceFileName, mode = "auto" }) {
+  const html = buildAnalysisHtmlDocument({ questions, summary, sourceFileName, mode });
+  downloadHtmlString(html, sourceFileName);
+  return html;
 }
 
 /** Open the styled report in a new browser tab (caller should open `about:blank` first if using async prep). */

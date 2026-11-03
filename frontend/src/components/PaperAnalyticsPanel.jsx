@@ -7,8 +7,9 @@ export default function PaperAnalyticsPanel({
   questions,
   summary,
   sourceFileName,
+  transactionId = null,
   canDownload = false,
-  onSelectQuestion
+  onSelectQuestion,
 }) {
   if (!questions?.length) return null;
 
@@ -32,6 +33,7 @@ export default function PaperAnalyticsPanel({
             questions={questions}
             summary={summary}
             sourceFileName={sourceFileName}
+            transactionId={transactionId}
           />
         )}
       </div>

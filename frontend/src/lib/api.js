@@ -1,3 +1,4 @@
+import { INSTAMARK_MAINTENANCE_MESSAGE, messageFromApiDetail } from "./instamarkService";
 import { getYantraUserId as resolveYantraUserId } from "./yantraUser";
 
 /** API base URL. Empty string uses same-origin (Vite dev proxy in local dev). */
@@ -41,6 +42,50 @@ export async function checkApiHealth() {
   }
 }
 
+export async function fetchInstamarkServiceStatus() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/instamark/storage-status`, {
+      method: "GET",
+    });
+    if (!response.ok) {
+      return {
+        operational: false,
+        maintenance: true,
+        message: INSTAMARK_MAINTENANCE_MESSAGE,
+      };
+    }
+    return response.json();
+  } catch {
+    return {
+      operational: false,
+      maintenance: false,
+      message: null,
+    };
+  }
+}
+
+export async function fetchInstamarkDebitStatus(clientTransactionId) {
+  const userId = getYantraUserId();
+  if (!userId || !clientTransactionId) {
+    throw new Error("User id and transaction id required to verify wallet debit.");
+  }
+
+  const params = new URLSearchParams({
+    yantra_user_id: userId,
+    client_transaction_id: clientTransactionId,
+  });
+  const response = await fetch(`${API_BASE_URL}/api/instamark/wallet/debit-status?${params}`, {
+    headers: getYantraAuthHeaders(),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(messageFromApiDetail(payload.detail, "Could not verify wallet debit."));
+  }
+
+  return response.json();
+}
+
 export async function fetchInstamarkWallet() {
   const userId = getYantraUserId();
   if (!userId) {
@@ -54,7 +99,7 @@ export async function fetchInstamarkWallet() {
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.detail || "Could not load wallet balance.");
+    throw new Error(messageFromApiDetail(payload.detail, "Could not load wallet balance."));
   }
 
   return response.json();

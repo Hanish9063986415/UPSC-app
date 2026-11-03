@@ -1,7 +1,17 @@
-import { API_BASE_URL, fetchInstamarkEvaluations, getYantraAuthHeaders } from "./api";
+import {
+  API_BASE_URL,
+  fetchInstamarkDebitStatus,
+  fetchInstamarkEvaluations,
+  getYantraAuthHeaders,
+} from "./api";
 import { removeInstamarkTransaction, updateInstamarkTransaction, loadInstamarkTransactions, extractEvaluationSummary, addInstamarkTransaction } from "./instamarkTransactions";
 import { saveTransactionAnalysis } from "./instamarkTransactionAssets";
 import { notifyWalletChanged } from "./walletEvents";
+import {
+  INSTAMARK_MAINTENANCE_MESSAGE,
+  messageFromApiDetail,
+  parseMaintenancePayload,
+} from "./instamarkService";
 import {
   buildInsufficientWalletMessage,
   parseInsufficientWalletPayload,
@@ -41,12 +51,30 @@ async function persistAnalysisReport(transactionId, questions, summary, fileName
   const saved = await saveTransactionAnalysis(transactionId, {
     questions,
     summary,
-    sourceFileName: fileName
+    sourceFileName: fileName,
   });
-  if (saved) {
-    updateInstamarkTransaction(transactionId, { hasAnalysisReport: true });
+  if (!saved) return false;
+
+  updateInstamarkTransaction(transactionId, { hasAnalysisReport: true });
+
+  try {
+    const { captureAnalysisHtmlDocument } = await import("./exportAnalysisHtml");
+    const exportHtml = await captureAnalysisHtmlDocument({
+      questions,
+      summary,
+      sourceFileName: fileName,
+      mode: "auto",
+    });
+    await saveTransactionAnalysis(transactionId, {
+      questions,
+      summary,
+      sourceFileName: fileName,
+      exportHtml,
+    });
+  } catch {
+    // Questions are saved; download will regenerate with the same export pipeline.
   }
-  return saved;
+  return true;
 }
 
 function applyFinalSummary(job, payload, fileName) {
@@ -93,7 +121,35 @@ class EvaluationRunner {
     this.listeners.forEach((fn) => fn(this.job));
   }
 
-  async start({ formData, transactionId, fileName, pageCount, amount, yantraUserId }) {
+  async _confirmWalletDebit(job, yantraUserId) {
+    if (!yantraUserId || job.walletDebited || job.status === "error") {
+      return;
+    }
+
+    try {
+      const status = await fetchInstamarkDebitStatus(job.transactionId);
+      if (status?.debited) {
+        job.walletDebited = true;
+        job.walletDebitedAmount = status.amount_inr ?? job.walletDebitedAmount ?? null;
+        job.walletBalance = status.balance_inr ?? job.walletBalance ?? null;
+        notifyWalletChanged();
+        this.notify();
+      } else if (job.walletBillingActive) {
+        job.walletDebitMissing = true;
+        job.error = INSTAMARK_MAINTENANCE_MESSAGE;
+        job.maintenance = true;
+        job.status = "error";
+        removeInstamarkTransaction(job.transactionId);
+        writeInFlight(null);
+        this.stopPolling();
+        this.notify();
+      }
+    } catch {
+      // Server may not expose debit-status yet; rely on SSE wallet_debit when available.
+    }
+  }
+
+  async start({ formData, transactionId, fileName, pageCount, amount, yantraUserId, walletBillingActive }) {
     if (this.job?.status === "running") {
       return this.job;
     }
@@ -108,6 +164,9 @@ class EvaluationRunner {
       error: null,
       insufficientWallet: false,
       walletDebited: false,
+      walletDebitedAmount: null,
+      walletBillingActive: Boolean(walletBillingActive),
+      walletDebitMissing: false,
       startedAt: Date.now(),
       disconnected: false,
       userInitiated: true
@@ -135,12 +194,17 @@ class EvaluationRunner {
           return job;
         }
 
+        const maintenance = parseMaintenancePayload(payload);
+        if (maintenance || response.status === 503) {
+          job.status = "error";
+          job.maintenance = true;
+          job.error = maintenance?.message || INSTAMARK_MAINTENANCE_MESSAGE;
+          this.notify();
+          return job;
+        }
+
         const detail = payload?.detail;
-        const message =
-          typeof detail === "string"
-            ? detail
-            : detail?.message || `Failed: ${response.status} ${response.statusText}`;
-        throw new Error(message);
+        throw new Error(messageFromApiDetail(detail, `Failed: ${response.status} ${response.statusText}`));
       }
 
       addInstamarkTransaction({
@@ -173,6 +237,12 @@ class EvaluationRunner {
         }
       }
 
+      if (
+        job.status === "running" ||
+        (job.status === "completed" && job.walletBillingActive && !job.walletDebited)
+      ) {
+        await this._confirmWalletDebit(job, yantraUserId);
+      }
       if (job.status === "running") {
         job.status = "completed";
         writeInFlight(null);
@@ -220,6 +290,7 @@ class EvaluationRunner {
       job.questions = [...job.questions, payload];
     } else if (type === "wallet_debit") {
       job.walletDebited = true;
+      job.walletDebitedAmount = payload.amount_inr ?? null;
       job.walletBalance = payload.balance_inr ?? null;
       notifyWalletChanged();
     } else if (type === "final_summary") {
@@ -234,6 +305,9 @@ class EvaluationRunner {
             balance: payload.balance_inr,
             required: payload.required_inr,
           });
+      } else if (payload.code === "maintenance" || payload.code === "wallet_billing_unavailable") {
+        job.maintenance = true;
+        job.error = payload.message || INSTAMARK_MAINTENANCE_MESSAGE;
       } else {
         job.error = payload.message || "Evaluation failed";
       }

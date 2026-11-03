@@ -17,11 +17,16 @@ from app.services.evaluation_pipeline import get_evaluation_pipeline
 from app.services.evaluation_storage_service import save_instamark_evaluation
 from app.services.wallet_service import (
     InsufficientWalletBalance,
+    WalletBillingUnavailable,
     assert_sufficient_balance,
     calculate_evaluation_amount,
     debit_for_evaluation,
+    ensure_instamark_operational,
+    instamark_wallet_required,
     insufficient_wallet_message,
+    maintenance_error_payload,
     refund_evaluation_debit,
+    wallet_billing_active,
 )
 from app.utils.json_utils import create_sse_event
 
@@ -139,8 +144,14 @@ async def evaluate_pdf_stream(
     async def run_pipeline() -> None:
         nonlocal debited_amount
         try:
+            if instamark_wallet_required():
+                if not yantra_user_id or page_count is None or page_count <= 0:
+                    raise WalletBillingUnavailable(
+                        log_detail="stream missing yantra_user_id or page_count for billing"
+                    )
+
             if (
-                database_enabled()
+                wallet_billing_active()
                 and yantra_user_id
                 and page_count is not None
                 and page_count > 0
@@ -166,6 +177,11 @@ async def evaluate_pdf_stream(
                             "rate_per_page_inr": debit_result.rate_per_page_inr,
                         },
                     )
+                )
+
+            if instamark_wallet_required() and debited_amount is None:
+                raise WalletBillingUnavailable(
+                    log_detail="pipeline blocked: wallet debit did not complete"
                 )
 
             result = await pipeline.run(
@@ -241,6 +257,13 @@ async def evaluate_pdf_stream(
                         "balance_inr": e.balance,
                         "required_inr": e.required,
                     },
+                )
+            )
+        except WalletBillingUnavailable:
+            await event_queue.put(
+                create_sse_event(
+                    "error",
+                    maintenance_error_payload(),
                 )
             )
         except Exception as e:
@@ -331,6 +354,11 @@ async def evaluate_pdf(
     """
     settings = get_settings()
     page_limit_int = _parse_page_limit(page_limit)
+
+    try:
+        ensure_instamark_operational()
+    except WalletBillingUnavailable as e:
+        raise HTTPException(status_code=503, detail=maintenance_error_payload()) from e
 
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
@@ -459,6 +487,11 @@ async def evaluate_pdf_streaming(
     settings = get_settings()
     page_limit_int = _parse_page_limit(page_limit)
 
+    try:
+        ensure_instamark_operational()
+    except WalletBillingUnavailable as e:
+        raise HTTPException(status_code=503, detail=maintenance_error_payload()) from e
+
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
@@ -471,7 +504,7 @@ async def evaluate_pdf_streaming(
 
     resolved_user_id = (yantra_user_id or x_yantra_user_id or "").strip() or None
 
-    if database_enabled() and not resolved_user_id:
+    if instamark_wallet_required() and not resolved_user_id:
         raise HTTPException(
             status_code=400,
             detail="YantraIAS user id required for wallet billing. Pass yantra_user_id or X-Yantra-User-Id header.",
@@ -485,7 +518,12 @@ async def evaluate_pdf_streaming(
     page_count_int = int(page_count) if page_count and page_count.strip().isdigit() else None
     amount_value = float(amount_inr) if amount_inr and amount_inr.strip() else None
 
-    if database_enabled() and resolved_user_id and page_count_int and page_count_int > 0:
+    if instamark_wallet_required() and resolved_user_id:
+        if not page_count_int or page_count_int <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not start evaluation. Please re-upload your PDF and try again.",
+            )
         try:
             await assert_sufficient_balance(resolved_user_id, page_count_int)
         except InsufficientWalletBalance as e:

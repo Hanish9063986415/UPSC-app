@@ -15,7 +15,8 @@ import {
   loadInstamarkTransactions,
 } from "./lib/instamarkTransactions";
 import { evaluationRunner } from "./lib/evaluationRunner";
-import { checkApiHealth, formatFetchError, getYantraUserId } from "./lib/api";
+import { checkApiHealth, fetchInstamarkServiceStatus, formatFetchError, getYantraUserId } from "./lib/api";
+import { INSTAMARK_MAINTENANCE_MESSAGE } from "./lib/instamarkService";
 import { notifyWalletChanged } from "./lib/walletEvents";
 import { buildInsufficientWalletMessage, YANTRA_WALLET_URL } from "./lib/walletMessages";
 
@@ -31,10 +32,13 @@ function Dashboard() {
   });
   const [status, setStatus] = useState("Idle");
   const [apiOnline, setApiOnline] = useState(null);
+  const [instamarkMaintenance, setInstamarkMaintenance] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState(INSTAMARK_MAINTENANCE_MESSAGE);
   const [questions, setQuestions] = useState([]);
   const [summary, setSummary] = useState(null);
   const [busy, setBusy] = useState(false);
   const [evaluationAttempted, setEvaluationAttempted] = useState(false);
+  const [reportTransactionId, setReportTransactionId] = useState(null);
   const [activeQuestionNumber, setActiveQuestionNumber] = useState(null);
   const [instamarkTransactions, setInstamarkTransactions] = useState(() =>
     loadInstamarkTransactions()
@@ -63,7 +67,8 @@ function Dashboard() {
       pdfMeta.loading ||
       pdfMeta.error ||
       busy ||
-      apiOnline === false
+      apiOnline === false ||
+      instamarkMaintenance
     ) {
       return false;
     }
@@ -77,7 +82,7 @@ function Dashboard() {
     }
 
     return true;
-  }, [file, pdfMeta, busy, apiOnline, walletEnabled, isSignedIn, balanceInr]);
+  }, [file, pdfMeta, busy, apiOnline, instamarkMaintenance, walletEnabled, isSignedIn, balanceInr]);
   const isComplete = Boolean(summary) || status === "Completed";
   const statusIsError = status.startsWith("Error:") || apiOnline === false;
   const isBackgroundEval = status.startsWith("Evaluating in background");
@@ -116,18 +121,29 @@ function Dashboard() {
           "Evaluating in background — you can leave this page. Results will appear when ready."
         );
       } else if (job.status === "completed") {
+        setReportTransactionId(job.transactionId || null);
         setStatus(
           job.summary?.persisted === false
             ? job.summary?.persist_error
-              ? `Results ready, but not saved to database: ${job.summary.persist_error}`
-              : "Results ready, but not saved to database (check DATABASE_URL and Supabase tables)."
+              ? "Results ready, but your history could not be saved right now."
+              : "Results ready, but your history could not be saved right now."
             : "Completed"
         );
         refreshInstamarkTransactions();
         refreshWallet();
         notifyWalletChanged();
       } else if (job.status === "error") {
-        setStatus(job.insufficientWallet ? job.error || "Insufficient wallet balance." : `Error: ${job.error || "Evaluation failed"}`);
+        if (job.maintenance) {
+          setInstamarkMaintenance(true);
+          setMaintenanceMessage(job.error || INSTAMARK_MAINTENANCE_MESSAGE);
+        }
+        setStatus(
+          job.maintenance
+            ? job.error || INSTAMARK_MAINTENANCE_MESSAGE
+            : job.insufficientWallet
+              ? job.error || "Insufficient wallet balance."
+              : `Error: ${job.error || "Evaluation failed"}`
+        );
         if (!job.insufficientWallet) {
           refreshInstamarkTransactions();
         }
@@ -148,6 +164,18 @@ function Dashboard() {
       const online = await checkApiHealth();
       if (cancelled) return;
       setApiOnline(online);
+      if (online) {
+        const service = await fetchInstamarkServiceStatus();
+        if (cancelled) return;
+        const inMaintenance = service?.maintenance === true;
+        setInstamarkMaintenance(inMaintenance);
+        setMaintenanceMessage(service?.message || INSTAMARK_MAINTENANCE_MESSAGE);
+        if (inMaintenance && !busy && status === "Idle") {
+          setStatus(service?.message || INSTAMARK_MAINTENANCE_MESSAGE);
+        } else if (!inMaintenance && status === INSTAMARK_MAINTENANCE_MESSAGE) {
+          setStatus("Idle");
+        }
+      }
       if (!online && !busy && status === "Idle") {
         setStatus(formatFetchError(new TypeError("Failed to fetch")));
       } else if (online && status.startsWith("Cannot reach")) {
@@ -179,6 +207,10 @@ function Dashboard() {
   }, [questions, activeQuestionNumber, busy]);
 
   const handleStartEvaluateClick = () => {
+    if (instamarkMaintenance) {
+      setStatus(maintenanceMessage);
+      return;
+    }
     if (fileInputRef.current) {
       fileInputRef.current.click();
       return;
@@ -267,6 +299,11 @@ function Dashboard() {
     event.preventDefault();
     if (!file) return;
 
+    if (instamarkMaintenance) {
+      setStatus(maintenanceMessage);
+      return;
+    }
+
     if (walletEnabled && !getYantraUserId()) {
       setStatus("Error: YantraIAS user id required for wallet billing.");
       return;
@@ -314,7 +351,8 @@ function Dashboard() {
       fileName: file.name,
       pageCount: pdfMeta.pageCount,
       amount: pdfMeta.totalPrice,
-      yantraUserId
+      yantraUserId,
+      walletBillingActive: walletEnabled,
     });
 
     refreshInstamarkTransactions();
@@ -331,7 +369,10 @@ function Dashboard() {
 
   return (
     <div className="page dashboard-page is-landing">
-      <InstamarkLanding onEvaluate={handleStartEvaluateClick} />
+      <InstamarkLanding
+        onEvaluate={handleStartEvaluateClick}
+        maintenance={instamarkMaintenance}
+      />
 
       <input
         ref={fileInputRef}
@@ -442,7 +483,9 @@ function Dashboard() {
             )}
 
             <button className="btn btn-primary workspace-submit" disabled={!canSubmit} type="submit">
-              {busy
+              {instamarkMaintenance
+                ? "Under maintenance"
+                : busy
                 ? "Evaluating…"
                 : pdfMeta.loading
                   ? "Checking PDF…"
@@ -504,6 +547,7 @@ function Dashboard() {
           questions={questions}
           summary={summary}
           sourceFileName={file?.name}
+          transactionId={reportTransactionId}
           canDownload={isComplete && questions.length > 0}
           onSelectQuestion={handleSelectQuestion}
         />

@@ -1269,11 +1269,6 @@ body {
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
-.instamark-tx-report-btn--view {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-}
-
 .instamark-tx-report-btn--download {
   background: #fff7ed;
   border-color: #fed7aa;
@@ -1537,6 +1532,11 @@ body {
 
 .workspace-wallet-note {
   margin-top: 10px;
+}
+
+.instamark-landing-cta:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .wallet-recharge-callout {

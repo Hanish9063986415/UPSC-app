@@ -1,4 +1,4 @@
-export default function InstamarkLanding({ onEvaluate }) {
+export default function InstamarkLanding({ onEvaluate, maintenance = false }) {
   return (
     <div className="instamark-landing">
       <div className="instamark-landing-glow" aria-hidden="true" />
@@ -14,8 +14,15 @@ export default function InstamarkLanding({ onEvaluate }) {
           will evaluate in couple of minutes with detailed analysis. Our evaluation will bring your
           strengths and weakness along with the UPSC needed inputs based on your answer.
         </p>
-        <button type="button" className="instamark-landing-cta" onClick={onEvaluate}>
-          <span className="instamark-landing-cta-label">Evaluate Answer Now</span>
+        <button
+          type="button"
+          className="instamark-landing-cta"
+          onClick={onEvaluate}
+          disabled={maintenance}
+        >
+          <span className="instamark-landing-cta-label">
+            {maintenance ? "Under maintenance" : "Evaluate Answer Now"}
+          </span>
         </button>
       </section>
 

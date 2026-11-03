@@ -24,22 +24,40 @@ function openDb() {
   });
 }
 
-/** Persist evaluation analysis for later HTML view/download (not the uploaded answer sheet). */
-export async function saveTransactionAnalysis(transactionId, { questions, summary, sourceFileName }) {
+/** Persist evaluation analysis for later HTML download (not the uploaded answer sheet). */
+export async function saveTransactionAnalysis(
+  transactionId,
+  { questions, summary, sourceFileName, exportHtml }
+) {
   if (!transactionId || !questions?.length) return false;
 
   const db = await openDb();
+  const existing = await getTransactionAnalysis(transactionId);
   return new Promise((resolve, reject) => {
     const tx = db.transaction(ANALYSIS_STORE, "readwrite");
     tx.oncomplete = () => resolve(true);
     tx.onerror = () => reject(tx.error);
     tx.objectStore(ANALYSIS_STORE).put({
       transactionId,
-      sourceFileName: sourceFileName || "answer-sheet.pdf",
+      sourceFileName: sourceFileName || existing?.sourceFileName || "answer-sheet.pdf",
       questions,
-      summary: summary || null,
-      savedAt: new Date().toISOString()
+      summary: summary ?? existing?.summary ?? null,
+      exportHtml: exportHtml ?? existing?.exportHtml ?? null,
+      savedAt: new Date().toISOString(),
     });
+  });
+}
+
+/** Store the exact HTML file bytes produced during evaluation download. */
+export async function saveTransactionExportHtml(transactionId, exportHtml) {
+  if (!transactionId || !exportHtml) return false;
+  const existing = await getTransactionAnalysis(transactionId);
+  if (!existing?.questions?.length) return false;
+  return saveTransactionAnalysis(transactionId, {
+    questions: existing.questions,
+    summary: existing.summary,
+    sourceFileName: existing.sourceFileName,
+    exportHtml,
   });
 }
 
@@ -100,44 +118,32 @@ async function loadExportHtml() {
   return import("./exportAnalysisHtml");
 }
 
-/** Download the generated evaluation analysis HTML report (not the uploaded file). */
+/** Download the same HTML report file as during evaluation (uses stored export when available). */
 export async function downloadTransactionAnalysis(
   transactionId,
   { sourceFileName = "answer-sheet.pdf", serverEvaluationId } = {}
 ) {
   const record = await resolveTransactionAnalysis(transactionId, {
     serverEvaluationId,
-    sourceFileName
+    sourceFileName,
   });
   if (!record) return false;
 
-  const { downloadAnalysisHtml } = await loadExportHtml();
-  downloadAnalysisHtml({
+  const { buildAnalysisHtmlDocument, downloadHtmlString } = await loadExportHtml();
+  const fileLabel = record.sourceFileName || sourceFileName;
+
+  if (record.exportHtml) {
+    downloadHtmlString(record.exportHtml, fileLabel);
+    return true;
+  }
+
+  const html = buildAnalysisHtmlDocument({
     questions: record.questions,
     summary: record.summary,
-    sourceFileName: record.sourceFileName || sourceFileName,
-    mode: "built"
+    sourceFileName: fileLabel,
+    mode: "built",
   });
-  return true;
-}
-
-/** Open the evaluation analysis HTML report in a new tab. */
-export async function viewTransactionAnalysis(
-  transactionId,
-  { sourceFileName = "answer-sheet.pdf", serverEvaluationId, previewWindow = null } = {}
-) {
-  const record = await resolveTransactionAnalysis(transactionId, {
-    serverEvaluationId,
-    sourceFileName
-  });
-  if (!record) return false;
-
-  const { openAnalysisHtmlInWindow } = await loadExportHtml();
-  openAnalysisHtmlInWindow(previewWindow, {
-    questions: record.questions,
-    summary: record.summary,
-    sourceFileName: record.sourceFileName || sourceFileName,
-    mode: "built"
-  });
+  downloadHtmlString(html, fileLabel);
+  await saveTransactionExportHtml(transactionId, html);
   return true;
 }

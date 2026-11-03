@@ -4,8 +4,9 @@ export default function DownloadAnalysisButton({
   questions,
   summary,
   sourceFileName,
+  transactionId = null,
   disabled = false,
-  className = ""
+  className = "",
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -15,9 +16,20 @@ export default function DownloadAnalysisButton({
     setError("");
     setLoading(true);
     try {
-      const { downloadAnalysisHtml } = await import("../lib/exportAnalysisHtml");
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      downloadAnalysisHtml({ questions, summary, sourceFileName });
+      const { captureAnalysisHtmlDocument, downloadHtmlString } = await import(
+        "../lib/exportAnalysisHtml"
+      );
+      const html = await captureAnalysisHtmlDocument({
+        questions,
+        summary,
+        sourceFileName,
+        mode: "auto",
+      });
+      downloadHtmlString(html, sourceFileName);
+      if (transactionId) {
+        const { saveTransactionExportHtml } = await import("../lib/instamarkTransactionAssets");
+        await saveTransactionExportHtml(transactionId, html);
+      }
     } catch (err) {
       setError(err?.message || "Could not generate report.");
     } finally {

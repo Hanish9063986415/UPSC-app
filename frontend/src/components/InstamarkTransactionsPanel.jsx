@@ -1,15 +1,12 @@
 import { useMemo, useState } from "react";
 import { formatInr } from "../lib/pdfPricing";
-import {
-  downloadTransactionAnalysis,
-  viewTransactionAnalysis
-} from "../lib/instamarkTransactionAssets";
+import { downloadTransactionAnalysis } from "../lib/instamarkTransactionAssets";
 import {
   formatDuration,
   formatTransactionDate,
   formatTransactionTime,
   getInstamarkSerialMap,
-  getInstamarkTransactionTotals
+  getInstamarkTransactionTotals,
 } from "../lib/instamarkTransactions";
 
 function statusLabel(status) {
@@ -32,7 +29,7 @@ function reportAvailable(tx) {
   );
 }
 
-function TransactionStrip({ tx, serial, onView, onDownload, busyAction }) {
+function TransactionStrip({ tx, serial, onDownload, downloading }) {
   return (
     <li className={`instamark-tx-strip status-${tx.status}`}>
       <div className="instamark-tx-strip-cell instamark-tx-strip-serial">
@@ -71,19 +68,11 @@ function TransactionStrip({ tx, serial, onView, onDownload, busyAction }) {
           <div className="instamark-tx-report-actions">
             <button
               type="button"
-              className="instamark-tx-report-btn instamark-tx-report-btn--view"
-              disabled={Boolean(busyAction)}
-              onClick={() => onView(tx)}
-            >
-              {busyAction === "view" ? "Opening…" : "View HTML"}
-            </button>
-            <button
-              type="button"
               className="instamark-tx-report-btn instamark-tx-report-btn--download"
-              disabled={Boolean(busyAction)}
+              disabled={downloading}
               onClick={() => onDownload(tx)}
             >
-              {busyAction === "download" ? "Preparing…" : "Download HTML"}
+              {downloading ? "Preparing…" : "Download HTML"}
             </button>
           </div>
         ) : tx.status === "completed" ? (
@@ -107,46 +96,26 @@ export default function InstamarkTransactionsPanel({
   transactions = [],
   userId = null,
   isSignedIn = false,
-  accountLabel = null
+  accountLabel = null,
 }) {
-  const [busy, setBusy] = useState({ id: "", action: "" });
+  const [downloadingId, setDownloadingId] = useState("");
   const totals = getInstamarkTransactionTotals(transactions);
   const serialMap = useMemo(() => getInstamarkSerialMap(transactions), [transactions]);
 
   const analysisOpts = (tx) => ({
     sourceFileName: tx.fileName,
-    serverEvaluationId: tx.serverEvaluationId
+    serverEvaluationId: tx.serverEvaluationId,
   });
 
-  const handleView = async (tx) => {
-    const previewWindow = window.open("about:blank", "_blank", "noopener,noreferrer");
-    setBusy({ id: tx.id, action: "view" });
-    try {
-      const ok = await viewTransactionAnalysis(tx.id, {
-        ...analysisOpts(tx),
-        previewWindow
-      });
-      if (!ok) {
-        previewWindow?.close();
-        window.alert("Analysis report is not available for this evaluation yet.");
-      }
-    } catch (err) {
-      previewWindow?.close();
-      window.alert(err?.message || "Could not open the HTML report.");
-    } finally {
-      setBusy({ id: "", action: "" });
-    }
-  };
-
   const handleDownload = async (tx) => {
-    setBusy({ id: tx.id, action: "download" });
+    setDownloadingId(tx.id);
     try {
       const ok = await downloadTransactionAnalysis(tx.id, analysisOpts(tx));
       if (!ok) {
         window.alert("Analysis report is not available for this evaluation yet.");
       }
     } finally {
-      setBusy({ id: "", action: "" });
+      setDownloadingId("");
     }
   };
 
@@ -206,9 +175,8 @@ export default function InstamarkTransactionsPanel({
             key={tx.id}
             tx={tx}
             serial={serialMap.get(tx.id) ?? "—"}
-            onView={handleView}
             onDownload={handleDownload}
-            busyAction={busy.id === tx.id ? busy.action : ""}
+            downloading={downloadingId === tx.id}
           />
         ))}
       </ul>
