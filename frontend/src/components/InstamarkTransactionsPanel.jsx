@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { formatInr } from "../lib/pdfPricing";
-import { downloadTransactionAnalysis, saveAnalysisFromCompletePackage } from "../lib/instamarkTransactionAssets";
-import { fetchInstamarkEvaluation } from "../lib/api";
+import {
+  downloadTransactionAnalysis,
+  viewTransactionAnalysis
+} from "../lib/instamarkTransactionAssets";
 import {
   formatDuration,
   formatTransactionDate,
@@ -23,7 +25,14 @@ function formatMarks(tx) {
   return `${tx.marksAwarded}/${tx.marksPossible}${pct}`;
 }
 
-function TransactionStrip({ tx, serial, onDownload, downloading }) {
+function reportAvailable(tx) {
+  return (
+    tx.status === "completed" &&
+    (tx.hasAnalysisReport || tx.hasPdfCopy || tx.serverEvaluationId)
+  );
+}
+
+function TransactionStrip({ tx, serial, onView, onDownload, busyAction }) {
   return (
     <li className={`instamark-tx-strip status-${tx.status}`}>
       <div className="instamark-tx-strip-cell instamark-tx-strip-serial">
@@ -56,19 +65,31 @@ function TransactionStrip({ tx, serial, onDownload, downloading }) {
         <span className="instamark-tx-strip-value">{formatMarks(tx)}</span>
       </div>
 
-      <div className="instamark-tx-strip-cell instamark-tx-strip-pdf">
+      <div className="instamark-tx-strip-cell instamark-tx-strip-report">
         <span className="instamark-tx-strip-label">Analysis report</span>
-        {tx.hasAnalysisReport || tx.hasPdfCopy ? (
-          <button
-            type="button"
-            className="instamark-tx-download-btn"
-            disabled={downloading}
-            onClick={() => onDownload(tx)}
-          >
-            {downloading ? "Preparing…" : "Download analysis PDF"}
-          </button>
-        ) : (
+        {reportAvailable(tx) ? (
+          <div className="instamark-tx-report-actions">
+            <button
+              type="button"
+              className="instamark-tx-report-btn instamark-tx-report-btn--view"
+              disabled={Boolean(busyAction)}
+              onClick={() => onView(tx)}
+            >
+              {busyAction === "view" ? "Opening…" : "View HTML"}
+            </button>
+            <button
+              type="button"
+              className="instamark-tx-report-btn instamark-tx-report-btn--download"
+              disabled={Boolean(busyAction)}
+              onClick={() => onDownload(tx)}
+            >
+              {busyAction === "download" ? "Preparing…" : "Download HTML"}
+            </button>
+          </div>
+        ) : tx.status === "completed" ? (
           <span className="instamark-tx-strip-muted">Not available</span>
+        ) : (
+          <span className="instamark-tx-strip-muted">Pending</span>
         )}
       </div>
 
@@ -88,28 +109,44 @@ export default function InstamarkTransactionsPanel({
   isSignedIn = false,
   accountLabel = null
 }) {
-  const [downloadingId, setDownloadingId] = useState("");
+  const [busy, setBusy] = useState({ id: "", action: "" });
   const totals = getInstamarkTransactionTotals(transactions);
   const serialMap = useMemo(() => getInstamarkSerialMap(transactions), [transactions]);
 
-  const handleDownload = async (tx) => {
-    setDownloadingId(tx.id);
+  const analysisOpts = (tx) => ({
+    sourceFileName: tx.fileName,
+    serverEvaluationId: tx.serverEvaluationId
+  });
+
+  const handleView = async (tx) => {
+    const previewWindow = window.open("about:blank", "_blank", "noopener,noreferrer");
+    setBusy({ id: tx.id, action: "view" });
     try {
-      let ok = await downloadTransactionAnalysis(tx.id, tx.fileName);
-      if (!ok && tx.serverEvaluationId) {
-        const record = await fetchInstamarkEvaluation(tx.serverEvaluationId);
-        if (record?.complete_package) {
-          await saveAnalysisFromCompletePackage(tx.id, record.complete_package, {
-            sourceFileName: tx.fileName
-          });
-          ok = await downloadTransactionAnalysis(tx.id, tx.fileName);
-        }
+      const ok = await viewTransactionAnalysis(tx.id, {
+        ...analysisOpts(tx),
+        previewWindow
+      });
+      if (!ok) {
+        previewWindow?.close();
+        window.alert("Analysis report is not available for this evaluation yet.");
       }
+    } catch (err) {
+      previewWindow?.close();
+      window.alert(err?.message || "Could not open the HTML report.");
+    } finally {
+      setBusy({ id: "", action: "" });
+    }
+  };
+
+  const handleDownload = async (tx) => {
+    setBusy({ id: tx.id, action: "download" });
+    try {
+      const ok = await downloadTransactionAnalysis(tx.id, analysisOpts(tx));
       if (!ok) {
         window.alert("Analysis report is not available for this evaluation yet.");
       }
     } finally {
-      setDownloadingId("");
+      setBusy({ id: "", action: "" });
     }
   };
 
@@ -160,7 +197,7 @@ export default function InstamarkTransactionsPanel({
         <span>Date</span>
         <span>Evaluation time</span>
         <span>Marks</span>
-        <span>Analysis PDF</span>
+        <span>Analysis HTML</span>
       </div>
 
       <ul className="instamark-tx-strip-list">
@@ -169,8 +206,9 @@ export default function InstamarkTransactionsPanel({
             key={tx.id}
             tx={tx}
             serial={serialMap.get(tx.id) ?? "—"}
+            onView={handleView}
             onDownload={handleDownload}
-            downloading={downloadingId === tx.id}
+            busyAction={busy.id === tx.id ? busy.action : ""}
           />
         ))}
       </ul>

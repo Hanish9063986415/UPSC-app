@@ -7,51 +7,34 @@ export default function DownloadAnalysisButton({
   disabled = false,
   className = ""
 }) {
-  const [loading, setLoading] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const runExport = async (kind) => {
+  const handleDownload = async () => {
     if (disabled || loading || !questions?.length) return;
     setError("");
-    setLoading(kind);
+    setLoading(true);
     try {
+      const { downloadAnalysisHtml } = await import("../lib/exportAnalysisHtml");
       await new Promise((resolve) => requestAnimationFrame(resolve));
-      if (kind === "html") {
-        const { downloadAnalysisHtml } = await import("../lib/exportAnalysisHtml");
-        downloadAnalysisHtml({ questions, summary, sourceFileName });
-      } else {
-        const { downloadAnalysisPdf } = await import("../lib/exportAnalysisPdf");
-        downloadAnalysisPdf({ questions, summary, sourceFileName });
-      }
+      downloadAnalysisHtml({ questions, summary, sourceFileName });
     } catch (err) {
-      setError(err?.message || "Could not generate export.");
+      setError(err?.message || "Could not generate report.");
     } finally {
-      setLoading(null);
+      setLoading(false);
     }
   };
 
-  const busy = Boolean(loading);
-
   return (
     <div className={`download-analysis-wrap ${className}`.trim()}>
-      <div className="download-analysis-actions">
-        <button
-          type="button"
-          className="btn btn-primary download-analysis-btn"
-          onClick={() => runExport("html")}
-          disabled={disabled || busy || !questions?.length}
-        >
-          {loading === "html" ? "Preparing report…" : "Download report (HTML)"}
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary download-analysis-btn download-analysis-btn--pdf"
-          onClick={() => runExport("pdf")}
-          disabled={disabled || busy || !questions?.length}
-        >
-          {loading === "pdf" ? "Preparing PDF…" : "PDF (text)"}
-        </button>
-      </div>
+      <button
+        type="button"
+        className="btn btn-primary download-analysis-btn"
+        onClick={handleDownload}
+        disabled={disabled || loading || !questions?.length}
+      >
+        {loading ? "Preparing report…" : "Download report (HTML)"}
+      </button>
       {error && (
         <p className="download-analysis-error" role="alert">
           {error}

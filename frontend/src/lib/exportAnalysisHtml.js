@@ -23,6 +23,34 @@ function sanitizeFilename(name) {
     .slice(0, 60);
 }
 
+const MODEL_ANSWER_PREVIEW_LINES = 4;
+
+function modelAnswerNeedsToggle(text) {
+  if (!text) return false;
+  const lines = String(text).split(/\r?\n/);
+  return lines.length > MODEL_ANSWER_PREVIEW_LINES || text.length > 280;
+}
+
+function renderModelAnswerBlock(modelText) {
+  if (!modelText) return "";
+  const canToggle = modelAnswerNeedsToggle(modelText);
+  const bodyClass = canToggle ? "model-answer-body is-collapsed" : "model-answer-body is-expanded";
+  const toggleBtn = canToggle
+    ? `<button type="button" class="model-answer-view-complete" aria-expanded="false">View full model answer</button>`
+    : "";
+
+  return `
+    <section class="sub-card model model-answer-section">
+      <div class="model-answer-head">
+        <h4>Model answer</h4>
+        ${toggleBtn}
+      </div>
+      <div class="${bodyClass}">
+        <div class="model-answer-text">${richTextToHtml(modelText)}</div>
+      </div>
+    </section>`;
+}
+
 function richTextToHtml(text) {
   const escaped = escapeHtml(text).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   return escaped
@@ -199,7 +227,7 @@ function renderQuestionSection(item) {
           ? `<div class="keywords"><strong>Keywords for success:</strong> ${escapeHtml(overall.keywords_for_success.join(" · "))}</div>`
           : ""
       }
-      ${modelText ? `<div class="sub-card model"><h4>Model answer</h4>${richTextToHtml(modelText)}</div>` : ""}
+      ${modelText ? renderModelAnswerBlock(modelText) : ""}
     </section>`;
 }
 
@@ -331,12 +359,68 @@ ul { margin: 6px 0; padding-left: 1.2rem; }
 p { margin: 6px 0; }
 .error-text { color: var(--low); }
 .footer-note { text-align: center; color: var(--muted); font-size: 0.8rem; margin-top: 28px; }
+.model-answer-section h4 { margin: 0; flex: 1; min-width: 0; color: var(--blue-deep); }
+.model-answer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.model-answer-view-complete {
+  flex-shrink: 0;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+  color: #047857;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.model-answer-view-complete:hover {
+  border-color: #6ee7b7;
+  box-shadow: 0 4px 12px rgba(4, 120, 87, 0.12);
+}
+.model-answer-body { position: relative; }
+.model-answer-text { font-size: 0.92rem; line-height: 1.65; white-space: pre-wrap; }
+.model-answer-body.is-collapsed .model-answer-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  max-height: calc(1.65em * 4);
+}
+.model-answer-body.is-collapsed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.5rem;
+  border-radius: 0 0 10px 10px;
+  background: linear-gradient(to bottom, rgba(255, 250, 243, 0), #fffaf3 92%);
+  pointer-events: none;
+}
 @media print {
   body { background: #fff; }
   .wrap { max-width: none; padding: 0; }
   .card, .question-card { break-inside: avoid; box-shadow: none; }
+  .model-answer-view-complete { display: none !important; }
+  .model-answer-body.is-collapsed .model-answer-text {
+    display: block;
+    -webkit-line-clamp: unset;
+    overflow: visible;
+    max-height: none;
+  }
+  .model-answer-body.is-collapsed::after { display: none; }
 }
 `;
+
+const REPORT_MODEL_ANSWER_SCRIPT = `<script>
+document.addEventListener("DOMContentLoaded",function(){document.querySelectorAll(".model-answer-section").forEach(function(s){var b=s.querySelector(".model-answer-body"),t=s.querySelector(".model-answer-view-complete");if(!b||!t)return;t.addEventListener("click",function(){var e=b.classList.toggle("is-expanded");b.classList.toggle("is-collapsed",!e),t.setAttribute("aria-expanded",e?"true":"false"),t.textContent=e?"Show less":"View full model answer"})})});
+<\/script>`;
 
 export function buildAnalysisHtml({ questions, summary, sourceFileName }) {
   if (!questions?.length) {
@@ -419,15 +503,108 @@ export function buildAnalysisHtml({ questions, summary, sourceFileName }) {
 
     <p class="footer-note">© YantraIAS · Instamark · Open this file in any browser · Print to PDF for a styled document</p>
   </div>
+  ${REPORT_MODEL_ANSWER_SCRIPT}
 </body>
 </html>`;
 }
 
-export function downloadAnalysisHtml({ questions, summary, sourceFileName }) {
-  const html = buildAnalysisHtml({ questions, summary, sourceFileName });
+function collectPageStyles() {
+  const chunks = [];
+  for (const sheet of document.styleSheets) {
+    try {
+      chunks.push([...sheet.cssRules].map((rule) => rule.cssText).join("\n"));
+    } catch {
+      if (sheet.href) chunks.push(`@import url("${sheet.href}");`);
+    }
+  }
+  chunks.push(`
+.export-shell { max-width: 1240px; margin: 0 auto; padding: 24px 28px 48px; }
+.export-shell .download-analysis-wrap,
+.export-shell button:not(.model-answer-view-complete) { display: none !important; }
+.export-shell details { display: block; }
+html, body { margin: 0; background: var(--bg-page, #f4f6fb); color: var(--text-primary, #1a1c22); }
+.export-shell .model-answer-body.is-collapsed .model-answer-text {
+  -webkit-line-clamp: 4;
+  max-height: calc(1.65em * 4);
+}
+`);
+  return chunks.filter(Boolean).join("\n");
+}
+
+function cloneLiveEvaluationMarkup() {
+  const summary = document.querySelector(".analytics-panel");
+  const results = document.querySelector(".results-card");
+  if (!summary || !results) return null;
+
+  const shell = document.createElement("div");
+  shell.className = "export-shell page dashboard-page";
+  shell.append(summary.cloneNode(true), results.cloneNode(true));
+
+  shell.querySelectorAll(".download-analysis-wrap").forEach((el) => el.remove());
+  shell.querySelectorAll("button").forEach((el) => {
+    if (!el.classList.contains("model-answer-view-complete")) el.remove();
+  });
+  shell.querySelectorAll("details").forEach((el) => el.setAttribute("open", ""));
+  shell.querySelectorAll(".is-collapsed").forEach((el) => {
+    if (el.classList.contains("model-answer-body")) return;
+    el.classList.remove("is-collapsed");
+    el.classList.add("is-expanded");
+  });
+  shell.querySelectorAll(".model-answer-view-complete").forEach((btn) => {
+    btn.textContent = "View full model answer";
+    btn.setAttribute("aria-expanded", "false");
+    const body = btn.closest(".model-answer-section")?.querySelector(".model-answer-body");
+    if (body) {
+      body.classList.add("is-collapsed");
+      body.classList.remove("is-expanded");
+    }
+  });
+  return shell.outerHTML;
+}
+
+function wrapLiveEvaluationHtml(markup, sourceFileName) {
+  const title = sourceFileName
+    ? `Instamark evaluation — ${escapeHtml(sourceFileName)}`
+    : "Instamark evaluation";
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>${collectPageStyles()}</style>
+</head>
+<body>
+${markup}
+${REPORT_MODEL_ANSWER_SCRIPT}
+</body>
+</html>`;
+}
+
+/** @param {"auto"|"live"|"built"} mode — `built` skips DOM scrape (best for transaction history). */
+export function buildAnalysisHtmlDocument({ questions, summary, sourceFileName, mode = "auto" }) {
+  if (mode === "built") {
+    return buildAnalysisHtml({ questions, summary, sourceFileName });
+  }
+  const liveMarkup =
+    mode !== "built" && typeof document !== "undefined" ? cloneLiveEvaluationMarkup() : null;
+  if (liveMarkup) {
+    return wrapLiveEvaluationHtml(liveMarkup, sourceFileName);
+  }
+  return buildAnalysisHtml({ questions, summary, sourceFileName });
+}
+
+export function analysisHtmlDownloadFilename(sourceFileName) {
   const stamp = new Date().toISOString().slice(0, 10);
   const base = sanitizeFilename(sourceFileName);
-  const filename = `upsc-analysis-${base}-${stamp}.html`;
+  return `upsc-analysis-${base}-${stamp}.html`;
+}
+
+export function downloadAnalysisHtml({ questions, summary, sourceFileName, mode = "auto" }) {
+  const html = buildAnalysisHtmlDocument({ questions, summary, sourceFileName, mode });
+  const filename = analysisHtmlDownloadFilename(sourceFileName);
 
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -439,4 +616,27 @@ export function downloadAnalysisHtml({ questions, summary, sourceFileName }) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+/** Open the styled report in a new browser tab (caller should open `about:blank` first if using async prep). */
+export function openAnalysisHtmlInWindow(
+  targetWindow,
+  { questions, summary, sourceFileName, mode = "built" }
+) {
+  const html = buildAnalysisHtmlDocument({ questions, summary, sourceFileName, mode });
+  if (!targetWindow || targetWindow.closed) {
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      URL.revokeObjectURL(url);
+      throw new Error("Pop-up blocked. Allow pop-ups to view the report, or use Download HTML.");
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+    return;
+  }
+  targetWindow.document.open();
+  targetWindow.document.write(html);
+  targetWindow.document.close();
+  targetWindow.opener = null;
 }

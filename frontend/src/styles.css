@@ -1169,7 +1169,7 @@ body {
 
 .instamark-tx-strip {
   display: grid;
-  grid-template-columns: 44px minmax(120px, 1.4fr) minmax(96px, 0.9fr) minmax(88px, 0.7fr) minmax(88px, 0.8fr) minmax(108px, 0.9fr);
+  grid-template-columns: 44px minmax(120px, 1.4fr) minmax(96px, 0.9fr) minmax(88px, 0.7fr) minmax(88px, 0.8fr) minmax(168px, 1.05fr);
   gap: 10px 12px;
   align-items: center;
   padding: 14px 14px 10px;
@@ -1250,25 +1250,47 @@ body {
   white-space: nowrap;
 }
 
-.instamark-tx-download-btn {
+.instamark-tx-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.instamark-tx-report-btn {
   border: 1px solid #cbd5e1;
   background: #fff;
   color: #1e3a8a;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 700;
   border-radius: 8px;
-  padding: 7px 10px;
+  padding: 7px 9px;
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
-.instamark-tx-download-btn:hover:not(:disabled) {
+.instamark-tx-report-btn--view {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.instamark-tx-report-btn--download {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
+.instamark-tx-report-btn:hover:not(:disabled) {
   border-color: #93c5fd;
   box-shadow: 0 4px 10px rgba(30, 64, 175, 0.1);
 }
 
-.instamark-tx-download-btn:disabled {
+.instamark-tx-report-btn--download:hover:not(:disabled) {
+  border-color: #fdba74;
+  box-shadow: 0 4px 10px rgba(194, 65, 12, 0.12);
+}
+
+.instamark-tx-report-btn:disabled {
   opacity: 0.65;
   cursor: wait;
 }
@@ -1318,7 +1340,7 @@ body {
 @media (min-width: 900px) {
   .instamark-tx-table-head {
     display: grid;
-    grid-template-columns: 44px minmax(120px, 1.4fr) minmax(96px, 0.9fr) minmax(88px, 0.7fr) minmax(88px, 0.8fr) minmax(108px, 0.9fr);
+    grid-template-columns: 44px minmax(120px, 1.4fr) minmax(96px, 0.9fr) minmax(88px, 0.7fr) minmax(88px, 0.8fr) minmax(168px, 1.05fr);
     gap: 10px 12px;
     padding: 0 14px 8px;
     font-size: 0.68rem;
@@ -1349,7 +1371,7 @@ body {
     grid-column: 1 / -1;
   }
 
-  .instamark-tx-strip-pdf {
+  .instamark-tx-strip-report {
     grid-column: 1 / -1;
   }
 }
@@ -4196,19 +4218,8 @@ input[type="file"]::file-selector-button {
   gap: 6px;
 }
 
-.download-analysis-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .download-analysis-btn {
-  flex: 1 1 160px;
-  min-width: 0;
-}
-
-.download-analysis-btn--pdf {
-  flex: 0 1 auto;
+  width: 100%;
 }
 
 .download-analysis-error {

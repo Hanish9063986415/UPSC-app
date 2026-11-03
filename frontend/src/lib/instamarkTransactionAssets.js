@@ -24,7 +24,7 @@ function openDb() {
   });
 }
 
-/** Persist evaluation analysis for later PDF download (not the uploaded answer sheet). */
+/** Persist evaluation analysis for later HTML view/download (not the uploaded answer sheet). */
 export async function saveTransactionAnalysis(transactionId, { questions, summary, sourceFileName }) {
   if (!transactionId || !questions?.length) return false;
 
@@ -73,16 +73,71 @@ export async function hasTransactionAnalysis(transactionId) {
   return Boolean(record?.questions?.length);
 }
 
-/** Download the generated evaluation analysis PDF (not the uploaded file). */
-export async function downloadTransactionAnalysis(transactionId, fallbackFileName = "answer-sheet.pdf") {
-  const record = await getTransactionAnalysis(transactionId);
-  if (!record?.questions?.length) return false;
+/**
+ * Load analysis from IndexedDB; fetch from server only when local copy is missing.
+ * Keeps server/API use to one hydration per transaction.
+ */
+export async function resolveTransactionAnalysis(
+  transactionId,
+  { serverEvaluationId, sourceFileName } = {}
+) {
+  let record = await getTransactionAnalysis(transactionId);
+  if (record?.questions?.length) return record;
+  if (!serverEvaluationId) return null;
 
-  const { downloadAnalysisPdf } = await import("./exportAnalysisPdf");
-  downloadAnalysisPdf({
+  const { fetchInstamarkEvaluation } = await import("./api");
+  const remote = await fetchInstamarkEvaluation(serverEvaluationId);
+  if (!remote?.complete_package) return null;
+
+  await saveAnalysisFromCompletePackage(transactionId, remote.complete_package, {
+    sourceFileName: sourceFileName || "answer-sheet.pdf"
+  });
+  record = await getTransactionAnalysis(transactionId);
+  return record?.questions?.length ? record : null;
+}
+
+async function loadExportHtml() {
+  return import("./exportAnalysisHtml");
+}
+
+/** Download the generated evaluation analysis HTML report (not the uploaded file). */
+export async function downloadTransactionAnalysis(
+  transactionId,
+  { sourceFileName = "answer-sheet.pdf", serverEvaluationId } = {}
+) {
+  const record = await resolveTransactionAnalysis(transactionId, {
+    serverEvaluationId,
+    sourceFileName
+  });
+  if (!record) return false;
+
+  const { downloadAnalysisHtml } = await loadExportHtml();
+  downloadAnalysisHtml({
     questions: record.questions,
     summary: record.summary,
-    sourceFileName: record.sourceFileName || fallbackFileName
+    sourceFileName: record.sourceFileName || sourceFileName,
+    mode: "built"
+  });
+  return true;
+}
+
+/** Open the evaluation analysis HTML report in a new tab. */
+export async function viewTransactionAnalysis(
+  transactionId,
+  { sourceFileName = "answer-sheet.pdf", serverEvaluationId, previewWindow = null } = {}
+) {
+  const record = await resolveTransactionAnalysis(transactionId, {
+    serverEvaluationId,
+    sourceFileName
+  });
+  if (!record) return false;
+
+  const { openAnalysisHtmlInWindow } = await loadExportHtml();
+  openAnalysisHtmlInWindow(previewWindow, {
+    questions: record.questions,
+    summary: record.summary,
+    sourceFileName: record.sourceFileName || sourceFileName,
+    mode: "built"
   });
   return true;
 }
