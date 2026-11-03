@@ -92,9 +92,13 @@ export async function fetchInstamarkWallet() {
     throw new Error("Sign in with your YantraIAS account to view wallet credits.");
   }
 
-  const params = new URLSearchParams({ yantra_user_id: userId });
+  const params = new URLSearchParams({
+    yantra_user_id: userId,
+    _: String(Date.now()),
+  });
   const response = await fetch(`${API_BASE_URL}/api/instamark/wallet?${params}`, {
-    headers: getYantraAuthHeaders()
+    headers: getYantraAuthHeaders(),
+    cache: "no-store",
   });
 
   if (!response.ok) {

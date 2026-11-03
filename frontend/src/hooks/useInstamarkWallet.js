@@ -32,7 +32,16 @@ export function useInstamarkWallet(userId) {
   }, [refreshWallet]);
 
   useEffect(() => {
-    const handleWalletChanged = () => {
+    const handleWalletChanged = (event) => {
+      const balance = event?.detail?.balance_inr;
+      if (balance != null && Number.isFinite(Number(balance))) {
+        setWallet((prev) => ({
+          ...(prev || {}),
+          balance_inr: Number(balance),
+          credits: Number(balance),
+          wallet_enabled: true,
+        }));
+      }
       refreshWallet();
     };
     window.addEventListener("instamark-wallet-changed", handleWalletChanged);

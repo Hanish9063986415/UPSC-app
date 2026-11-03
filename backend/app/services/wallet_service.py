@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.config.settings import get_settings
 from app.core.logging_config import logger
@@ -17,7 +18,8 @@ from app.models.user_wallet import UserWallet, WalletTransaction
 ALLOWED_WALLET_TX_CATEGORIES = frozenset(
     {"content", "session", "meet", "wellness", "subscription", "other"}
 )
-WALLET_TX_CATEGORY = "other"
+# YantraIAS ledger: Instamark answer evaluation is a content purchase.
+WALLET_TX_CATEGORY = "content"
 
 INSTAMARK_MAINTENANCE_MESSAGE = (
     "Instamark is temporarily under maintenance. Please try again in a few minutes."
@@ -272,27 +274,55 @@ async def debit_for_evaluation(
                 raise InsufficientWalletBalance(float(balance_before), float(amount))
 
             balance_after = balance_before - amount
-            wallet.balance = balance_after
-            wallet.updated_at = _utcnow()
-
             note = (
                 f"Instamark evaluation: {page_count} pages @ ₹{int(rate)}/page — "
                 f"₹{amount} debited (₹{balance_before} → ₹{balance_after})."
             )
-            session.add(
-                WalletTransaction(
-                    user_id=user_id,
-                    type="debit",
-                    amount=amount,
-                    balance_before=balance_before,
-                    balance_after=balance_after,
-                    label=label,
-                    category=normalize_wallet_category(WALLET_TX_CATEGORY),
-                    item_id=client_transaction_id,
-                    note=note,
-                    status="completed",
-                )
+            ledger_row = WalletTransaction(
+                user_id=user_id,
+                type="debit",
+                amount=amount,
+                balance_before=balance_before,
+                balance_after=balance_after,
+                label=label,
+                category=normalize_wallet_category(WALLET_TX_CATEGORY),
+                item_id=client_transaction_id,
+                note=note,
+                payment_method="instamark",
+                status="completed",
             )
+            session.add(ledger_row)
+
+            try:
+                await session.flush()
+            except IntegrityError as exc:
+                logger.error(
+                    "wallet_transactions insert failed user=%s tx=%s: %s",
+                    yantra_user_id,
+                    client_transaction_id or "-",
+                    exc,
+                )
+                raise ValueError(
+                    "Could not record wallet debit. Please contact support."
+                ) from exc
+
+            await session.refresh(wallet)
+            balance_from_db = int(wallet.balance)
+
+            if balance_from_db == balance_before:
+                wallet.balance = balance_after
+                wallet.updated_at = _utcnow()
+                await session.flush()
+            elif balance_from_db != balance_after:
+                balance_after = balance_from_db
+                ledger_row.balance_after = balance_after
+                logger.info(
+                    "Wallet balance synced from DB trigger user=%s balance_inr=%s",
+                    yantra_user_id,
+                    balance_after,
+                )
+            else:
+                balance_after = balance_from_db
 
     logger.info(
         "Wallet debited user=%s amount_inr=%s pages=%s tx=%s balance_inr=%s",
@@ -417,6 +447,7 @@ async def refund_evaluation_debit(
                     category=normalize_wallet_category(WALLET_TX_CATEGORY),
                     item_id=client_transaction_id,
                     note=refund_note,
+                    payment_method="instamark",
                     status="completed",
                 )
             )

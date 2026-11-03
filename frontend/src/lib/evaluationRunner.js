@@ -3,6 +3,7 @@ import {
   fetchInstamarkDebitStatus,
   fetchInstamarkEvaluations,
   getYantraAuthHeaders,
+  getYantraUserId,
 } from "./api";
 import { removeInstamarkTransaction, updateInstamarkTransaction, loadInstamarkTransactions, extractEvaluationSummary, addInstamarkTransaction } from "./instamarkTransactions";
 import { saveTransactionAnalysis } from "./instamarkTransactionAssets";
@@ -132,7 +133,10 @@ class EvaluationRunner {
         job.walletDebited = true;
         job.walletDebitedAmount = status.amount_inr ?? job.walletDebitedAmount ?? null;
         job.walletBalance = status.balance_inr ?? job.walletBalance ?? null;
-        notifyWalletChanged();
+        notifyWalletChanged({
+          balance_inr: job.walletBalance,
+          amount_inr: job.walletDebitedAmount,
+        });
         this.notify();
       } else if (job.walletBillingActive) {
         job.walletDebitMissing = true;
@@ -292,7 +296,11 @@ class EvaluationRunner {
       job.walletDebited = true;
       job.walletDebitedAmount = payload.amount_inr ?? null;
       job.walletBalance = payload.balance_inr ?? null;
-      notifyWalletChanged();
+      notifyWalletChanged({
+        balance_inr: payload.balance_inr ?? null,
+        amount_inr: payload.amount_inr ?? null,
+        yantra_user_id: getYantraUserId(),
+      });
     } else if (type === "final_summary") {
       applyFinalSummary(job, payload, fileName);
     } else if (type === "error") {

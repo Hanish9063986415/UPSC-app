@@ -115,6 +115,9 @@ function Dashboard() {
       setBusy(job.status === "running" || job.status === "background");
 
       if (job.status === "running") {
+        if (job.walletDebited) {
+          refreshWallet();
+        }
         setStatus(job.walletDebited ? "Evaluating…" : "Verifying wallet balance…");
       } else if (job.status === "background") {
         setStatus(
